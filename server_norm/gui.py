@@ -1,104 +1,81 @@
 import tkinter as tk
 from tkinter import ttk
 import socket
-from client import Client  # Импортируем клиентскую часть
+import matplotlib
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-from mpl_toolkits.mplot3d import Axes3D  # Импортируем 3D-проекцию
+import threading
+import ast
+
+class Client:
+    def __init__(self, server_host='127.0.0.1', server_port=12345):
+        self.server_host = server_host
+        self.server_port = server_port
+        self.client_socket = None
+        self.connected = False
+
+    def connect(self):
+        """Подключение к серверу."""
+        try:
+            self.client_socket = socket.create_connection((self.server_host, self.server_port), timeout=2)
+            self.connected = True
+            print("Connected to server.")
+        except (socket.timeout, socket.error):
+            self.connected = False
+            print("Failed to connect to server.")
+
+    def receive_coordinates(self, update_plot_callback):
+        """Получение координат от сервера."""
+        while self.connected:
+            try:
+                data = self.client_socket.recv(1024).decode()
+                if data:
+                    coordinates = ast.literal_eval(data)
+                    # Вызов функции обновления графика в основном потоке
+                    update_plot_callback(coordinates)
+            except Exception as e:
+                print(f"Error receiving data: {e}")
+                self.connected = False
+
+    def close(self):
+        """Закрытие соединения с сервером."""
+        if self.client_socket:
+            self.client_socket.close()
+            print("Connection closed.")
 
 class SimulationGUI(tk.Tk):
-    def __init__(self, server_host='127.0.0.1', server_port=12345):
+    def __init__(self, client):
         super().__init__()
-        self.title("3D Brownian Motion Simulation")
+        self.title("Particle Simulation")
         self.geometry("800x600")
         
-        self.client = Client(server_host, server_port)
+        self.client = client
         self.client.connect()
 
-        # Создаем виджет для 3D-графика слева
-        fig = Figure(figsize=(5, 5), dpi=100)
+        # Создаем виджет для 3D-графика
+        fig = plt.figure()
         self.ax = fig.add_subplot(111, projection='3d')
         self.canvas = FigureCanvasTkAgg(fig, master=self)
-        self.canvas.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # Панель для ввода параметров справа
-        params_frame = tk.Frame(self)
-        params_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        # Запускаем поток для получения координат
+        threading.Thread(target=self.client.receive_coordinates, args=(self.update_plot,), daemon=True).start()
 
-        # Поля ввода для параметров
-        self.create_parameter_field(params_frame, "Температура", "300")
-        self.create_parameter_field(params_frame, "Вязкость", "0.001")
-        self.create_parameter_field(params_frame, "Частицы", "50")
-        self.create_parameter_field(params_frame, "Масса", "1")
-        self.create_parameter_field(params_frame, "Радиус", "0.1")
-        self.create_parameter_field(params_frame, "Объем куба", "10")
-        self.params["Скорость анимации (dt)"] = self.create_parameter_field(params_frame, "Скорость анимации (dt)", "0.01")
+    def update_plot(self, coordinates):
+        """Обновление графика с новыми координатами."""
+        # Используем метод after для обновления графика в основном потоке
+        self.ax.clear()
+        xs, ys, zs = zip(*coordinates)
+        self.ax.scatter(xs, ys, zs)
+        self.canvas.draw()
 
-        # Кнопки управления
-        start_button = tk.Button(params_frame, text="Запуск", command=self.start_simulation)
-        start_button.pack(fill=tk.X, pady=5)
-        
-        pause_button = tk.Button(params_frame, text="Пауза", command=self.pause_simulation)
-        pause_button.pack(fill=tk.X, pady=5)
-        
-        stop_button = tk.Button(params_frame, text="Стоп", command=self.stop_simulation)
-        stop_button.pack(fill=tk.X, pady=5)
-        
-        # Проверка наличия сервера при старте
-        self.check_server_status()
-
-    def create_parameter_field(self, frame, label, default_value):
-        label = tk.Label(frame, text=label)
-        label.pack()
-        entry = tk.Entry(frame)
-        entry.insert(0, default_value)
-        entry.pack(fill=tk.X, padx=5, pady=5)
-    
-    def start_simulation(self):
-        """Запуск симуляции через сервер."""
-        if not self.client.connected:
-            print("Нет подключения к серверу!")
-            return
-
-        # Отправляем команду серверу для старта
-        self.client.send_command("start")
-        print("Starting simulation...")
-
-    def pause_simulation(self):
-        """Пауза симуляции через сервер.""" 
-        if not self.client.connected:
-            print("Нет подключения к серверу!")
-            return
-
-        # Отправляем команду серверу для паузы
-        self.client.send_command("pause")
-        print("Pausing simulation...")
-
-    def stop_simulation(self):
-        """Остановка симуляции через сервер."""
-        if not self.client.connected:
-            print("Нет подключения к серверу!")
-            return
-
-        # Отправляем команду серверу для остановки
-        self.client.send_command("stop")
-        print("Stopping simulation...")
-
-    def check_server_status(self):
-        """Проверка доступности сервера."""
-        if self.client.connected:
-            print("Подключение к серверу установлено.")
-        else:
-            print("Не удалось подключиться к серверу.")
-    
-    def on_close(self):
-        """Обработчик закрытия окна для корректной остановки клиента."""
-        if self.client.connected:
-            self.client.close()  # Отключаемся от сервера
-        self.quit()  # Закрываем окно приложения
+    def on_closing(self):
+        """Обработка закрытия окна."""
+        self.client.close()
+        self.destroy()
 
 if __name__ == "__main__":
-    app = SimulationGUI()
-    app.protocol("WM_DELETE_WINDOW", app.on_close)  # Используем on_close при закрытии окна
-    app.mainloop()
-
+    client = Client()
+    gui = SimulationGUI(client)
+    gui.protocol("WM_DELETE_WINDOW", gui.on_closing)
+    gui.mainloop()
