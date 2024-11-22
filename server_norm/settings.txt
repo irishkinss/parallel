@@ -1,1 +1,1 @@
-{'temperature': 83.72093023255815, 'viscosity': 50.0, 'size': 0.0, 'mass': 10.465116279069768, 'frequency': 0.0}
+{'temperature': 0.0, 'viscosity': 0.0, 'size': 0.0, 'mass': 0.0, 'frequency': 0.0}

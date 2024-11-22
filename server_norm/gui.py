@@ -152,16 +152,12 @@ class SimulationGUI(tk.Tk):
             "viscosity": self.viscosity_slider.get(),
             "size": self.size_slider.get(),
             "mass": self.mass_slider.get(),
-            "frequency": self.frequency_slider.get()
+            "frequency": self.frequency_slider.get(),
         }
+        # Отправляем настройки на сервер и записываем их в JSON
+        self.client.send_settings(settings)
+        self.log_text.insert(tk.END, "Настройки отправлены на сервер и сохранены в файл.\n")
         
-        # Сохранение значений в файл
-        with open("settings.txt", "w") as file:
-            file.write(str(settings))
-        
-        # Применение настроек
-        self.log_text.insert(tk.END, "Параметры применены\n")
-        print(f"Settings applied: {settings}")
 
     def reset_settings(self):
         # Сброс настроек
@@ -175,13 +171,7 @@ class SimulationGUI(tk.Tk):
     def start_simulation(self):
         self.client.connect()
         self.log_text.insert(tk.END, "Запуск симуляции\n")
-        self.client.send_settings({
-            "temperature": self.temperature_slider.get(),
-            "viscosity": self.viscosity_slider.get(),
-            "size": self.size_slider.get(),
-            "mass": self.mass_slider.get(),
-            "frequency": self.frequency_slider.get()
-        })
+
 
         # Запуск потока для получения координат
         threading.Thread(target=self.client.receive_coordinates, daemon=True).start()
