@@ -51,12 +51,98 @@ class SimulationGUI(tk.Tk):
         
         self.client = client
         self.client.connect()
+        
+    def log_message(message):
+        log_text.insert(tk.END, f"{message}\n")
+        log_text.see(tk.END)
+    def apply_settings():
+        log_message("Применить настройки")
 
+    def reset_settings():
+        log_message("Сбросить настройки")
+
+    def start_simulation():
+        log_message("Симуляция началась")
+
+    def pause_simulation():
+        log_message("Симуляция приостановлена")
+
+    def stop_simulation():
+        log_message("Симуляция остановлена")
+
+
+
+    def start_window():
+        # Создание главного окна
+        root = tk.Tk()
+        root.title("Симуляция броуновского движения")
+
+        # Основная рамка
+        main_frame = ttk.Frame(root, padding=10)
+        main_frame.grid(row=0, column=0, sticky="nsew")
+
+        # Параметры среды
+        params_frame = ttk.LabelFrame(main_frame, text="Параметры эмуляции", padding=10)
+        params_frame.grid(row=0, column=1, padx=10, pady=10, sticky="n")
+
+        labels = ["Температура", "Вязкость", "Размер", "Масса", "Кол-во частиц"]
+        sliders = {}
+
+        for i, label_text in enumerate(labels):
+            label = ttk.Label(params_frame, text=label_text)
+            label.grid(row=i, column=0, sticky="w")
+            slider = ttk.Scale(params_frame, from_=0, to=100, orient="horizontal")
+            slider.grid(row=i, column=1, sticky="ew", pady=2)
+            sliders[label_text] = slider
+
+        # Управление
+        buttons_frame = ttk.Frame(params_frame, padding=10)
+        buttons_frame.grid(row=len(labels), column=0, columnspan=2, pady=10)
+
+        apply_button = ttk.Button(buttons_frame, text="Применить", command=apply_settings)
+        apply_button.grid(row=0, column=0, padx=5)
+
+        reset_button = ttk.Button(buttons_frame, text="Сбросить", command=reset_settings)
+        reset_button.grid(row=0, column=1, padx=5)
+
+        # Элементы управления симуляцией
+        sim_frame = ttk.LabelFrame(main_frame, text="Управление эмуляцией", padding=10)
+        sim_frame.grid(row=1, column=1, padx=10, pady=10, sticky="n")
+
+        start_button = ttk.Button(sim_frame, text="Запуск", command=start_simulation)
+        start_button.grid(row=0, column=0, padx=5)
+
+        pause_button = ttk.Button(sim_frame, text="Пауза", command=pause_simulation)
+        pause_button.grid(row=0, column=1, padx=5)
+
+        stop_button = ttk.Button(sim_frame, text="Стоп", command=stop_simulation)
+        stop_button.grid(row=0, column=2, padx=5)
+
+        # Лог
+        log_frame = ttk.Frame(main_frame, padding=10)
+        log_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
+
+        log_label = ttk.Label(log_frame, text="Лог:")
+        log_label.grid(row=0, column=0, sticky="w")
+
+        log_text = tk.Text(log_frame, height=10, wrap="word")
+        log_text.grid(row=1, column=0, sticky="nsew")
+
+        # Настройки сетки
+        log_frame.grid_rowconfigure(1, weight=1)
+        log_frame.grid_columnconfigure(0, weight=1)
+
+        main_frame.grid_rowconfigure(2, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+        
         # Создаем виджет для 3D-графика
         fig = plt.figure()
         self.ax = fig.add_subplot(111, projection='3d')
         self.canvas = FigureCanvasTkAgg(fig, master=self)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        self.start_button = tk.Button(self, text="Start Simulation", command=self.start_simulation)
+        self.start_button.pack()
 
         # Запускаем поток для получения координат
         threading.Thread(target=self.client.receive_coordinates, args=(self.update_plot,), daemon=True).start()
@@ -73,6 +159,16 @@ class SimulationGUI(tk.Tk):
         """Обработка закрытия окна."""
         self.client.close()
         self.destroy()
+    
+    def start_simulation(self):
+        viscosity = float(self.viscosity_entry.get())
+        temperature = float(self.temperature_entry.get())
+        dt = float(self.dt_entry.get())
+
+        # Передайте параметры в класс Simulation
+        particles = [Particle(random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1), 0.01, 1.0, temperature) for _ in range(100)]
+        simulation = Simulation(particles, viscosity, temperature, dt)
+        simulation.run()
 
 if __name__ == "__main__":
     client = Client()

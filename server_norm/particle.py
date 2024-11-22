@@ -3,20 +3,26 @@ import math
 import concurrent.futures
 from threading import Barrier
 
+# The `Particle` class represents a particle in a simulation with properties such as position
+# (x, y, z), radius, mass, and temperature. When a `Particle` object is created, it initializes
+# its position and velocity components randomly based on a given temperature. The
+# `calculate_velocity` method calculates the initial velocity components based on the given
+# temperature and random angles.
 class Particle:
-    def __init__(self, x, y, z, radius, mass):
+    def __init__(self, x, y, z, radius, mass, temperature):
         self.x = x
         self.y = y
         self.z = z
         self.radius = radius
         self.mass = mass
+        self.temperature = temperature
         
         theta = np.random.uniform(0, math.pi)
         phi = np.random.uniform(0, 2 * math.pi)
         self.vx = 0
         self.vy = 0
         self.vz = 0
-        self.calculate_velocity(theta, phi)
+        self.calculate_velocity(theta, phi, temperature)
 
     def calculate_velocity(self, theta, phi, temperature):
         k = 1.380649e-23

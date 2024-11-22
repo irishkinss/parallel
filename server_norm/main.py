@@ -1,21 +1,29 @@
-import socket
-from gui import SimulationGUI
+import threading
+import time
+from server import Server  # Импортируем класс Server из server.py
+from gui import SimulationGUI  # Импортируем класс SimulationGUI из gui.py
+from client import Client  # Импортируем класс Client из client.py
 
-def check_server(server_host='127.0.0.1', server_port=12345):
-    """Проверка, запущен ли сервер."""
-    try:
-        # Пытаемся подключиться к серверу
-        with socket.create_connection((server_host, server_port), timeout=2):
-            return True
-    except (socket.timeout, socket.error):
-        return False
+def run_server():
+    server = Server()
+    server.start()
+
+def run_client():
+    client = Client()
+    gui = SimulationGUI(client)
+    gui.protocol("WM_DELETE_WINDOW", gui.on_closing)
+    gui.mainloop()
 
 if __name__ == "__main__":
-    # Проверка доступности сервера
-    if check_server():
-        # Запуск GUI приложения
-        app = SimulationGUI()
-        app.mainloop()
-    else:
-        print("Не удалось подключиться к серверу. Приложение не будет запущено.")
+    # Запускаем сервер в отдельном потоке
+    server_thread = threading.Thread(target=run_server)
+    server_thread.start()
 
+    # Даем серверу немного времени для инициализации
+    time.sleep(1)
+
+    # Запускаем клиент
+    run_client()
+
+    # Ждем завершения потока сервера
+    server_thread.join()
