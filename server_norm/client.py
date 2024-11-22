@@ -5,6 +5,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
 import ast
 import json
+from gui import SimulationGUI
 
 class Client:
     def __init__(self, server_host='127.0.0.2', server_port=12345):
@@ -19,6 +20,7 @@ class Client:
             self.client_socket = socket.create_connection((self.server_host, self.server_port), timeout=2)
             self.connected = True
             print("Connected to server.")
+            return True
         except (socket.timeout, socket.error):
             self.connected = False
             print("Failed to connect to server.")
@@ -69,29 +71,6 @@ class Client:
         if self.client_socket:
             self.client_socket.close()
             print("Connection closed.")
-
-class SimulationGUI(tk.Tk):
-    def __init__(self, client):
-        super().__init__()
-        self.title("Particle Simulation")
-        self.geometry("800x600")
-        
-        self.client = client
-        self.client.connect()
-
-        # Создаем виджет для 3D-графика
-        fig = plt.figure()
-        self.ax = fig.add_subplot(111, projection='3d')
-        self.canvas = FigureCanvasTkAgg(fig, master=self)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-        # Запускаем поток для получения координат
-        threading.Thread(target=self.client.receive_coordinates, daemon=True).start()
-
-    def on_closing(self):
-        """Обработка закрытия окна."""
-        self.client.close()
-        self.destroy()
 
 if __name__ == "__main__":
     client = Client()

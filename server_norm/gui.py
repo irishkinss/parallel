@@ -6,51 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
 import ast
-from client import Client
+#from client import Client
 
-# class Client:
-#     def __init__(self, server_host='127.0.0.1', server_port=12345):
-#         self.server_host = server_host
-#         self.server_port = server_port
-#         self.client_socket = None
-#         self.connected = False
-
-#     def connect(self):
-#         """Подключение к серверу."""
-#         try:
-#             self.client_socket = socket.create_connection((self.server_host, self.server_port), timeout=2)
-#             self.connected = True
-#             print("Connected to server.")
-#         except (socket.timeout, socket.error):
-#             self.connected = False
-#             print("Failed to connect to server.")
-
-#     def receive_coordinates(self):
-#         """Получение координат от сервера."""
-#         while self.connected:
-#             try:
-#                 data = self.client_socket.recv(1024).decode()
-#                 if data:
-#                     coordinates = ast.literal_eval(data)
-#                     self.update_plot(coordinates)
-#             except Exception as e:
-#                 print(f"Error receiving data: {e}")
-#                 self.connected = False
-
-#     def send_settings(self, settings):
-#         """Отправка настроек на сервер."""
-#         if self.connected:
-#             try:
-#                 self.client_socket.sendall(str(settings).encode())
-#                 print("Settings sent to server.")
-#             except Exception as e:
-#                 print(f"Error sending settings: {e}")
-
-#     def close(self):
-#         """Закрытие соединения с сервером."""
-#         if self.client_socket:
-#             self.client_socket.close()
-#             print("Connection closed.")
 
 class SimulationGUI(tk.Tk):
     def __init__(self, client):
@@ -146,8 +103,8 @@ class SimulationGUI(tk.Tk):
 # The commented out method `update_slider_value` in the code is a function that updates the text
 # displayed on a label widget based on the current value of a slider widget. It takes three
 # parameters: `event`, `label`, and `slider`.
-    # def update_slider_value(self, event, label, slider):
-    #     label.config(text=f"{int(slider.get())}")  # Обновление текста метки
+    def update_slider_value(self, event, label, slider):
+        label.config(text=f"{int(slider.get())}")  # Обновление текста метки
 
     def apply_settings(self):
         # Получение значений ползунков
@@ -196,7 +153,7 @@ class SimulationGUI(tk.Tk):
         self.destroy()
 
 # Основная логика для запуска приложения
-if __name__ == "__main__":
-    client = Client()
-    gui = SimulationGUI(client)
-    gui.mainloop()
+# if __name__ == "__main__":
+#     client = Client()
+#     gui = SimulationGUI(client)
+#     gui.mainloop()
