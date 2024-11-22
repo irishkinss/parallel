@@ -75,30 +75,40 @@ class SimulationGUI(tk.Tk):
 
         self.temperature_slider = ttk.Scale(self.control_frame, from_=0, to_=100, orient="horizontal")
         self.temperature_slider.grid(row=0, column=1, padx=5, pady=5)
+        self.temperature_value = ttk.Label(self.control_frame, text="0")  # Значение ползунка
+        self.temperature_value.grid(row=0, column=2, padx=5, pady=5)
 
         self.viscosity_label = ttk.Label(self.control_frame, text="Вязкость")
         self.viscosity_label.grid(row=1, column=0, sticky="w", padx=5, pady=5)
 
         self.viscosity_slider = ttk.Scale(self.control_frame, from_=0, to_=100, orient="horizontal")
         self.viscosity_slider.grid(row=1, column=1, padx=5, pady=5)
+        self.viscosity_value = ttk.Label(self.control_frame, text="0")  # Значение ползунка
+        self.viscosity_value.grid(row=1, column=2, padx=5, pady=5)
 
         self.size_label = ttk.Label(self.control_frame, text="Размер")
         self.size_label.grid(row=2, column=0, sticky="w", padx=5, pady=5)
 
         self.size_slider = ttk.Scale(self.control_frame, from_=0, to_=100, orient="horizontal")
         self.size_slider.grid(row=2, column=1, padx=5, pady=5)
+        self.size_value = ttk.Label(self.control_frame, text="0")  # Значение ползунка
+        self.size_value.grid(row=2, column=2, padx=5, pady=5)
 
         self.mass_label = ttk.Label(self.control_frame, text="Масса")
         self.mass_label.grid(row=3, column=0, sticky="w", padx=5, pady=5)
 
         self.mass_slider = ttk.Scale(self.control_frame, from_=0, to_=100, orient="horizontal")
         self.mass_slider.grid(row=3, column=1, padx=5, pady=5)
+        self.mass_value = ttk.Label(self.control_frame, text="0")  # Значение ползунка
+        self.mass_value.grid(row=3, column=2, padx=5, pady=5)
 
         self.frequency_label = ttk.Label(self.control_frame, text="Кол-во частиц")
         self.frequency_label.grid(row=4, column=0, sticky="w", padx=5, pady=5)
 
         self.frequency_slider = ttk.Scale(self.control_frame, from_=0, to_=100, orient="horizontal")
         self.frequency_slider.grid(row=4, column=1, padx=5, pady=5)
+        self.frequency_value = ttk.Label(self.control_frame, text="0")  # Значение ползунка
+        self.frequency_value.grid(row=4, column=2, padx=5, pady=5)
 
         self.apply_button = ttk.Button(self.control_frame, text="Применить", command=self.apply_settings)
         self.apply_button.grid(row=5, column=0, padx=5, pady=5)
@@ -123,34 +133,76 @@ class SimulationGUI(tk.Tk):
         fig = plt.figure()
         self.ax = fig.add_subplot(111, projection='3d')
         self.canvas = FigureCanvasTkAgg(fig, master=self.canvas_frame)
-        self.canvas.get_tk_widget().grid(row=0, column=0, padx=5, pady=5, sticky="nsew")    
+        self.canvas.get_tk_widget().grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
+        # Привязываем событие обновления значения
+        self.temperature_slider.bind("<Motion>", lambda event: self.update_slider_value(event, self.temperature_value, self.temperature_slider))
+        self.viscosity_slider.bind("<Motion>", lambda event: self.update_slider_value(event, self.viscosity_value, self.viscosity_slider))
+        self.size_slider.bind("<Motion>", lambda event: self.update_slider_value(event, self.size_value, self.size_slider))
+        self.mass_slider.bind("<Motion>", lambda event: self.update_slider_value(event, self.mass_value, self.mass_slider))
+        self.frequency_slider.bind("<Motion>", lambda event: self.update_slider_value(event, self.frequency_value, self.frequency_slider))
+
+    def update_slider_value(self, event, label, slider):
+        label.config(text=f"{int(slider.get())}")  # Обновление текста метки
 
     def apply_settings(self):
+        # Получение значений ползунков
+        settings = {
+            "temperature": self.temperature_slider.get(),
+            "viscosity": self.viscosity_slider.get(),
+            "size": self.size_slider.get(),
+            "mass": self.mass_slider.get(),
+            "frequency": self.frequency_slider.get()
+        }
+        
+        # Сохранение значений в файл
+        with open("settings.txt", "w") as file:
+            file.write(str(settings))
+        
         # Применение настроек
         self.log_text.insert(tk.END, "Параметры применены\n")
+        print(f"Settings applied: {settings}")
 
     def reset_settings(self):
         # Сброс настроек
         self.log_text.insert(tk.END, "Параметры сброшены\n")
+        self.temperature_slider.set(0)
+        self.viscosity_slider.set(0)
+        self.size_slider.set(0)
+        self.mass_slider.set(0)
+        self.frequency_slider.set(0)
 
     def start_simulation(self):
-        # Старт симуляции
-        self.log_text.insert(tk.END, "Симуляция запущена\n")
-        self.client.send_message("START")
+        self.client.connect()
+        self.log_text.insert(tk.END, "Запуск симуляции\n")
+        self.client.send_settings({
+            "temperature": self.temperature_slider.get(),
+            "viscosity": self.viscosity_slider.get(),
+            "size": self.size_slider.get(),
+            "mass": self.mass_slider.get(),
+            "frequency": self.frequency_slider.get()
+        })
+
+        # Запуск потока для получения координат
+        threading.Thread(target=self.client.receive_coordinates, daemon=True).start()
 
     def stop_simulation(self):
-        # Стоп симуляции
+        self.client.close()
         self.log_text.insert(tk.END, "Симуляция остановлена\n")
-        self.client.send_message("STOP")
-        
+
+    def update_plot(self, coordinates):
+        """Обновление 3D-графика."""
+        if coordinates:
+            self.ax.clear()
+            self.ax.scatter(coordinates[0], coordinates[1], coordinates[2])
+            self.canvas.draw()
     def on_closing(self):
         """Обработка закрытия окна."""
         self.client.close()
         self.destroy()
 
+# Основная логика для запуска приложения
 if __name__ == "__main__":
     client = Client()
-    app = SimulationGUI(client)
-    app.mainloop()
-    client.close()
+    gui = SimulationGUI(client)
+    gui.mainloop()
