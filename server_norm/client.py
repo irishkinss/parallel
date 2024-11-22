@@ -8,11 +8,12 @@ import json
 from gui import SimulationGUI
 
 class Client:
-    def __init__(self, server_host='127.0.0.2', server_port=12345):
+    def __init__(self, server_host='127.0.0.2', server_port=12345, gui = None):
         self.server_host = server_host
         self.server_port = server_port
         self.client_socket = None
         self.connected = False
+        self.gui = gui
 
     def connect(self):
         """Подключение к серверу."""
@@ -21,9 +22,11 @@ class Client:
             self.connected = True
             print("Connected to server.")
             return True
-        except (socket.timeout, socket.error):
+        except (socket.timeout, socket.error) as e:
             self.connected = False
-            print("Failed to connect to server.")
+            print(f"Failed to connect to server: {e}")
+            return False
+
             
     def send_settings(self, settings):
         try:

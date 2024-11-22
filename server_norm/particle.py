@@ -1,106 +1,184 @@
+from mpi4py import MPI
 import numpy as np
-import math
-import concurrent.futures
-from threading import Barrier
+import random
+import time
+import socket
+import json
+import threading
 
-# The `Particle` class represents a particle in a simulation with properties such as position
-# (x, y, z), radius, mass, and temperature. When a `Particle` object is created, it initializes
-# its position and velocity components randomly based on a given temperature. The
-# `calculate_velocity` method calculates the initial velocity components based on the given
-# temperature and random angles.
 class Particle:
-    def __init__(self, x, y, z, radius, mass, temperature):
+    def __init__(self, x, y, z, radius=0.01, mass=1.0, temperature=300, viscosity=0.001):
         self.x = x
-        self.y = y
+        self.y = y 
         self.z = z
         self.radius = radius
         self.mass = mass
         self.temperature = temperature
-        
-        theta = np.random.uniform(0, math.pi)
-        phi = np.random.uniform(0, 2 * math.pi)
-        self.vx = 0
-        self.vy = 0
-        self.vz = 0
-        self.calculate_velocity(theta, phi, temperature)
-
-    def calculate_velocity(self, theta, phi, temperature):
-        k = 1.380649e-23
-        vrms = math.sqrt((3 * k * temperature) / self.mass)
-        self.vx = vrms * math.sin(theta) * math.cos(phi)
-        self.vy = vrms * math.sin(theta) * math.sin(phi)
-        self.vz = vrms * math.cos(theta)
-
-    def stochastic_deviation(self, viscosity, temperature, dt):
-        k = 1.380649e-23
-        D = k * temperature / (6 * math.pi * viscosity * self.radius)
-        deviation = np.random.normal(0, math.sqrt(D * dt))
-        return deviation
-
-    def update_position(self, dt, viscosity, temperature):
-        dx = self.vx * dt + self.stochastic_deviation(viscosity, temperature, dt)
-        dy = self.vy * dt + self.stochastic_deviation(viscosity, temperature, dt)
-        dz = self.vz * dt + self.stochastic_deviation(viscosity, temperature, dt)
-        
-        self.x += dx
-        self.y += dy
-        self.z += dz
-
-class Simulation:
-    def __init__(self, particles, viscosity, temperature, dt):
-        self.particles = particles
         self.viscosity = viscosity
-        self.temperature = temperature
-        self.dt = dt
-        self.barrier = Barrier(len(particles) // 10 + (len(particles) % 10 > 0))
+        self.vx, self.vy, self.vz = self.calculate_velocity()
 
-    def process_particles(self, particles_subset):
-        """Перерасчет координат частиц в отдельном потоке."""
-        for particle in particles_subset:
-            particle.update_position(self.dt, self.viscosity, self.temperature)
+    def calculate_velocity(self):
+        k = 1.380649e-23  # постоянная Больцмана
+        vrms = np.sqrt((3 * k * self.temperature) / self.mass)
+        theta = np.random.uniform(0, np.pi)
+        phi = np.random.uniform(0, 2 * np.pi)
         
-        # Ждем, пока все потоки завершат работу с координатами
-        self.barrier.wait()
+        vx = vrms * np.sin(theta) * np.cos(phi)
+        vy = vrms * np.sin(theta) * np.sin(phi)
+        vz = vrms * np.cos(theta)
+        
+        return vx, vy, vz
 
-    def handle_collisions(self):
-        """Обработка столкновений со стенками и между частицами."""
-        for particle in self.particles:
-            # Столкновение со стенками куба
-            if particle.x <= 0 or particle.x >= 1:
-                particle.vx = -particle.vx
-            if particle.y <= 0 or particle.y >= 1:
-                particle.vy = -particle.vy
-            if particle.z <= 0 or particle.z >= 1:
-                particle.vz = -particle.vz
-            # Столкновения между частицами
-            for other in self.particles:
-                if other != particle and self.check_collision(particle, other):
-                    self.resolve_collision(particle, other)
+    def update_position(self, dt):
+        # Стохастическое обновление с учетом вязкости
+        D = (1.380649e-23 * self.temperature) / (6 * np.pi * self.viscosity * self.radius)
+        
+        noise_x = np.random.normal(0, np.sqrt(2 * D * dt))
+        noise_y = np.random.normal(0, np.sqrt(2 * D * dt))
+        noise_z = np.random.normal(0, np.sqrt(2 * D * dt))
+        
+        self.x += self.vx * dt + noise_x
+        self.y += self.vy * dt + noise_y
+        self.z += self.vz * dt + noise_z
 
-    def check_collision(self, particle1, particle2):
-        """Проверка столкновения между двумя частицами."""
-        distance = math.sqrt((particle1.x - particle2.x) ** 2 +
-                             (particle1.y - particle2.y) ** 2 +
-                             (particle1.z - particle2.z) ** 2)
-        return distance <= (particle1.radius + particle2.radius)
+        # Отскок от границ куба
+        if self.x < 0 or self.x > 1:
+            self.vx *= -1
+        if self.y < 0 or self.y > 1:
+            self.vy *= -1
+        if self.z < 0 or self.z > 1:
+            self.vz *= -1
 
-    def resolve_collision(self, particle1, particle2):
-        """Абсолютно упругое соударение двух частиц."""
-        # Простейшая модель обмена скоростями при столкновении
-        particle1.vx, particle2.vx = particle2.vx, particle1.vx
-        particle1.vy, particle2.vy = particle2.vy, particle1.vy
-        particle1.vz, particle2.vz = particle2.vz, particle1.vz
+    def check_collision(self, other):
+        distance = np.sqrt(
+            (self.x - other.x)**2 + 
+            (self.y - other.y)**2 + 
+            (self.z - other.z)**2
+        )
+        return distance <= (self.radius + other.radius)
 
-    def run(self):
-        """Основной цикл симуляции."""
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # Разбиваем частицы на подгруппы по 10 и запускаем для каждой подгруппы поток
-            particles_batches = [self.particles[i:i + 10] for i in range(0, len(self.particles), 10)]
-            while True:  # Основной цикл симуляции
-                futures = [executor.submit(self.process_particles, batch) for batch in particles_batches]
+class MPIParticleSimulation:
+    def __init__(self, settings):
+        # Инициализация MPI
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
+
+        # Параметры из настроек
+        self.settings = settings
+        self.temperature = settings.get('temperature', 300)
+        self.viscosity = settings.get('viscosity', 0.001)
+        self.particle_radius = settings.get('size', 0.01)
+        self.particle_mass = settings.get('mass', 1.0)
+        self.num_particles = settings.get('frequency', 100)
+
+        # Сокет для связи с клиентом
+        self.server_socket = None
+        self.client_connection = None
+
+    def create_particles(self):
+        # Создаем частицы для текущего процесса
+        particles_per_process = self.num_particles // self.size
+        return [
+            Particle(
+                random.uniform(0, 1), 
+                random.uniform(0, 1), 
+                random.uniform(0, 1),
+                radius=self.particle_radius,
+                mass=self.particle_mass,
+                temperature=self.temperature,
+                viscosity=self.viscosity
+            ) for _ in range(particles_per_process)
+        ]
+
+    def setup_server(self, host='127.0.0.2', port=12345):
+        """Настройка сервера для обмена данными"""
+        if self.rank == 0:  # Только главный процесс настраивает сервер
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind((host, port))
+            self.server_socket.listen(1)
+            print(f"Сервер ожидает подключения на {host}:{port}")
+            
+            # Ожидание подключения клиента
+            self.client_connection, addr = self.server_socket.accept()
+            print(f"Подключен клиент: {addr}")
+
+    def simulate(self):
+        # Создаем частицы
+        local_particles = self.create_particles()
+
+        while True:
+            # Обновляем позиции частиц
+            for particle in local_particles:
+                particle.update_position(0.005)  # dt = 5 мс
+
+            # Проверяем столкновения внутри локальной группы частиц
+            for i in range(len(local_particles)):
+                for j in range(i+1, len(local_particles)):
+                    if local_particles[i].check_collision(local_particles[j]):
+                        # Упрощенная модель соударения
+                        local_particles[i].vx, local_particles[j].vx = particles[j].vx, particles[i].vx
+                        local_particles[i].vy, local_particles[j].vy = particles[j].vy, particles[i].vy
+                        local_particles[i].vz, local_particles[j].vz = particles[j].vz, particles[i].vz
+
+            # Синхронизируем состояния частиц
+            all_particles_data = self.comm.allgather([
+                (p.x, p.y, p.z) for p in local_particles
+            ])
+
+            # Отправляем координаты клиенту (только главный процесс)
+            if self.rank == 0 and self.client_connection:
+                coordinates = [
+                    [p[0] for sublist in all_particles_data for p in sublist],
+                    [p[1] for sublist in all_particles_data for p in sublist],
+                    [p[2] for sublist in all_particles_data for p in sublist]
+                ]
                 
-                # Ожидание завершения всех потоков
-                concurrent.futures.wait(futures)
-                
-                # Обработка столкновений
-                self.handle_collisions()
+                try:
+                    # Отправляем координаты в формате JSON
+                    self.client_connection.send(json.dumps(coordinates).encode())
+                except Exception as e:
+                    print(f"Ошибка отправки данных: {e}")
+                    break
+
+            # Небольшая пауза
+            time.sleep(0.005)
+
+    def close(self):
+        """Закрытие соединений"""
+        if self.client_connection:
+            self.client_connection.close()
+        if self.server_socket:
+            self.server_socket.close()
+
+def load_settings():
+    """Загрузка настроек из файла"""
+    try:
+        with open('settings.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # Настройки по умолчанию
+        return {
+            'temperature': 300,
+            'viscosity': 0.001,
+            'size': 0.01,
+            'mass': 1.0,
+            'frequency': 100
+        }
+
+def main():
+    # Загружаем настройки
+    settings = load_settings()
+
+    # Создаем симуляцию
+    simulation = MPIParticleSimulation(settings)
+
+    try:
+        # simulation.setup_server()
+        simulation.simulate()
+    finally:
+        simulation.close()
+
+if __name__ == "__main__":
+    main()
