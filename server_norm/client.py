@@ -6,7 +6,7 @@ import threading
 import ast
 
 class Client:
-    def __init__(self, server_host='127.0.0.1', server_port=12345):
+    def __init__(self, server_host='127.0.0.2', server_port=12345):
         self.server_host = server_host
         self.server_port = server_port
         self.client_socket = None
