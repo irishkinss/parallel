@@ -24,26 +24,26 @@ class Client:
             print("Failed to connect to server.")
             
     def send_settings(self, settings):
-        """Метод для отправки настроек серверу и записи их в файл в формате JSON."""
         try:
-            # Отправляем настройки серверу
-            settings_data = json.dumps(settings)  # Преобразуем словарь в JSON
-            self.client_socket.sendall(settings_data.encode())
-            print(f"Settings sent to server: {settings}")
+            # Сохранение настроек в JSON файл
+            with open('settings.json', 'w', encoding='utf-8') as file:
+                json.dump(settings, file, ensure_ascii=False, indent=4)
+            print("Настройки сохранены в settings.json")
 
-            # Записываем настройки в файл
-            with open("settings.json", "w") as file:
-                json.dump(settings, file, indent=4)  # Форматируем JSON с отступами
-            print("Settings saved to settings.json")
+            # Отправка настроек на сервер (если нужно)
+            settings_data = json.dumps(settings)
+            self.client_socket.sendall(settings_data.encode())
+            print(f"Настройки отправлены на сервер: {settings}")
+
         except Exception as e:
-            print(f"Error sending settings or saving to file: {e}")
-    def receive_data(self):
-        """Получение данных от сервера."""
-        try:
-            data = self.socket.recv(1024)
-            return data.decode()
-        except Exception as e:
-            print(f"Error receiving data: {e}")
+            print(f"Ошибка при сохранении настроек: {e}")
+        def receive_data(self):
+            """Получение данных от сервера."""
+            try:
+                data = self.socket.recv(1024)
+                return data.decode()
+            except Exception as e:
+                print(f"Error receiving data: {e}")
             
     def receive_coordinates(self):
         """Получение координат от сервера."""
