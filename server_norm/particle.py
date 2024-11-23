@@ -75,10 +75,10 @@ class MPIParticleSimulation:
         # Сокет для связи с клиентом
         self.server_socket = None
         self.client_connection = None
-
+        
     def create_particles(self):
         # Создаем частицы для текущего процесса
-        particles_per_process = self.num_particles // self.size
+        particles_per_process = max(1, self.num_particles // self.size)
         return [
             Particle(
                 random.uniform(0, 1), 
@@ -104,11 +104,12 @@ class MPIParticleSimulation:
             self.client_connection, addr = self.server_socket.accept()
             print(f"Подключен клиент: {addr}")
 
-    def simulate(self):
+    def simulate(self, max_iterations=1000):
         # Создаем частицы
         local_particles = self.create_particles()
+        iteration = 0
 
-        while True:
+        while iteration < max_iterations:
             # Обновляем позиции частиц
             for particle in local_particles:
                 particle.update_position(0.005)  # dt = 5 мс
@@ -117,10 +118,10 @@ class MPIParticleSimulation:
             for i in range(len(local_particles)):
                 for j in range(i+1, len(local_particles)):
                     if local_particles[i].check_collision(local_particles[j]):
-                        # Упрощенная модель соударения
-                        local_particles[i].vx, local_particles[j].vx = particles[j].vx, particles[i].vx
-                        local_particles[i].vy, local_particles[j].vy = particles[j].vy, particles[i].vy
-                        local_particles[i].vz, local_particles[j].vz = particles[j].vz, particles[i].vz
+                        # Корректная модель соударения
+                        local_particles[i].vx, local_particles[j].vx = local_particles[j].vx, local_particles[i].vx
+                        local_particles[i].vy, local_particles[j].vy = local_particles[j].vy, local_particles[i].vy
+                        local_particles[i].vz, local_particles[j].vz = local_particles[j].vz, local_particles[i].vz
 
             # Синхронизируем состояния частиц
             all_particles_data = self.comm.allgather([
@@ -129,20 +130,18 @@ class MPIParticleSimulation:
 
             # Отправляем координаты клиенту (только главный процесс)
             if self.rank == 0 and self.client_connection:
-                coordinates = [
-                    [p[0] for sublist in all_particles_data for p in sublist],
-                    [p[1] for sublist in all_particles_data for p in sublist],
-                    [p[2] for sublist in all_particles_data for p in sublist]
-                ]
-                
                 try:
-                    # Отправляем координаты в формате JSON
+                    coordinates = [
+                        [p[0] for sublist in all_particles_data for p in sublist],
+                        [p[1] for sublist in all_particles_data for p in sublist],
+                        [p[2] for sublist in all_particles_data for p in sublist]
+                    ]
                     self.client_connection.send(json.dumps(coordinates).encode())
                 except Exception as e:
                     print(f"Ошибка отправки данных: {e}")
                     break
 
-            # Небольшая пауза
+            iteration += 1
             time.sleep(0.005)
 
     def close(self):

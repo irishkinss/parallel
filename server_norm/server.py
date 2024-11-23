@@ -21,7 +21,7 @@ class Server:
                 if settings_data:
                     settings = eval(settings_data)  # Преобразуем строку в словарь
                     temperature = settings.get('temperature', 300)  # Значение по умолчанию
-                    particle_count = settings.get('frequency', 100)  # Количество частиц
+                    particle_count = int(settings.get('frequency', 100))  # Количество частиц
                     self.particles = [Particle(random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1), 0.01, 1.0, temperature) for _ in range(particle_count)]
 
                 # Создаем потоки для обработки частиц
