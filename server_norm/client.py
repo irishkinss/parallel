@@ -60,16 +60,44 @@ class Client:
             print(f"Error receiving data: {e}")
             
     def receive_coordinates(self):
-        """Получение координат от сервера."""
-        while self.connected:
-            try:
-                data = self.client_socket.recv(1024).decode()
-                if data:
-                    coordinates = ast.literal_eval(data)
-                    self.update_plot(coordinates)
-            except Exception as e:
-                print(f"Error receiving data: {e}")
-                self.connected = False
+        try:
+            # Установка тайм-аута для получения
+            self.client_socket.settimeout(10)
+            
+            # Получение данных
+            data = self.client_socket.recv(4096).decode('utf-8')
+            if data:
+                try:
+                    # Попытка распарсить JSON
+                    coordinates = json.loads(data)
+                    
+                    # Проверка структуры данных
+                    if isinstance(coordinates, list) and len(coordinates) == 3:
+                        # Транспонируем координаты, если они присланы как [[x1,x2,...], [y1,y2,...], [z1,z2,...]]
+                        coordinates = list(map(list, zip(*coordinates)))
+                        print(f"Получены координаты {len(coordinates)} частиц")
+                        
+                        # Здесь можно добавить логику обработки или визуализации координат
+                        return coordinates
+                    else:
+                        print("Неверный формат координат")
+                        return None
+                
+                except json.JSONDecodeError as e:
+                    print(f"Ошибка декодирования JSON: {e}")
+                    print(f"Полученные данные: {data}")
+                    return None
+            
+            else:
+                print("Пустые данные от сервера")
+                return None
+        
+        except socket.timeout:
+            print("Тайм-аут при получении данных")
+            return None
+        except Exception as e:
+            print(f"Ошибка при получении координат: {e}")
+            return None
 
     def update_plot(self, coordinates):
         """Обновление графика с новыми координатами."""

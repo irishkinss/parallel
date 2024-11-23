@@ -130,7 +130,7 @@ class SimulationGUI(tk.Tk):
         self.frequency_slider.set(0)
 
     def start_simulation(self):
-        self.client.connect()
+        #self.client.connect()
         self.log_text.insert(tk.END, "Запуск симуляции\n")
 
 

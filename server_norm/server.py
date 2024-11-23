@@ -15,29 +15,56 @@ class Server:
     def handle_client(self, client_socket):
         """Обработчик для клиентов."""
         try:
+            # Установка тайм-аута для сокета
+            client_socket.settimeout(10)  # 10 секунд тайм-аута
+
             while True:
                 # Получаем настройки от клиента
                 settings_data = client_socket.recv(1024).decode()
-                if settings_data:
-                    settings = eval(settings_data)  # Преобразуем строку в словарь
-                    temperature = settings.get('temperature', 300)  # Значение по умолчанию
-                    particle_count = int(settings.get('frequency', 100))  # Количество частиц
-                    self.particles = [Particle(random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1), 0.01, 1.0, temperature) for _ in range(particle_count)]
+                if not settings_data:
+                    break  # Если данные пустые, закрываем соединение
 
-                # Создаем потоки для обработки частиц
-                threads = []
-                for i in range(0, len(self.particles), 5):  # Обрабатываем по 5 частиц за раз
-                    thread = threading.Thread(target=self.process_particles, args=(client_socket, self.particles[i:i + 5]))
-                    threads.append(thread)
-                    thread.start()
+                print(f"Получены настройки: {settings_data}")
+                
+                # Безопасное преобразование настроек
+                try:
+                    settings = json.loads(settings_data)
+                except json.JSONDecodeError:
+                    print("Ошибка декодирования JSON")
+                    break
 
-                # Ждем завершения всех потоков
-                for thread in threads:
-                    thread.join()
+                # Безопасное получение параметров
+                temperature = float(settings.get('temperature', 300))
+                particle_count = int(settings.get('frequency', 100))
+                
+                # Создание частиц
+                self.particles = [
+                    Particle(
+                        random.uniform(0, 1), 
+                        random.uniform(0, 1), 
+                        random.uniform(0, 1), 
+                        0.01, 
+                        1.0, 
+                        temperature
+                    ) for _ in range(particle_count)
+                ]
 
-                time.sleep(0.015)  # Обновляем каждые 15 мс
+                # Отправка координат частиц
+                coordinates = [(p.x, p.y, p.z) for p in self.particles]
+                try:
+                    client_socket.sendall(json.dumps(coordinates).encode())
+                    print(f"Отправлены координаты {len(coordinates)} частиц")
+                except Exception as send_error:
+                    print(f"Ошибка отправки данных: {send_error}")
+                    break
+
+                # Небольшая пауза между итерациями
+                time.sleep(0.5)
+
+        except socket.timeout:
+            print("Тайм-аут соединения")
         except Exception as e:
-            print(f"Error with client: {e}")
+            print(f"Ошибка обработки клиента: {e}")
         finally:
             client_socket.close()
 
