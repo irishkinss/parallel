@@ -148,13 +148,11 @@ class SimulationGUI(tk.Tk):
                 "frequency": self.frequency_slider.get(),
             }
             
-            # Отправляем настройки и запускаем получение координат
-            if self.client.send_settings(settings):
-                print("[DEBUG] Настройки отправлены успешно")
-                self.client.start_receiving()
+            if self.client.start_simulation():
+                print("[DEBUG] Симуляция успешно запущена")
                 self.log_text.insert(tk.END, "Симуляция запущена\n")
             else:
-                print("[ERROR] Не удалось отправить настройки")
+                print("[ERROR] Не удалось запустить симуляцию")
                 self.log_text.insert(tk.END, "Ошибка: не удалось запустить симуляцию\n")
         except Exception as e:
             print(f"[ERROR] Ошибка при запуске симуляции: {e}")

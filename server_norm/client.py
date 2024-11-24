@@ -120,41 +120,78 @@ class Client:
             return None
 
     def start_receiving(self):
-        """Запуск потока получения координат."""
-        if not self.receive_thread or not self.receive_thread.is_alive():
-            print("[DEBUG] Запуск потока получения координат")
-            self.running = True
-            self.receive_thread = threading.Thread(target=self.receive_coordinates_loop)
-            self.receive_thread.daemon = True  # Поток-демон завершится вместе с основным потоком
-            self.receive_thread.start()
-        else:
-            print("[WARNING] Поток получения координат уже запущен")
-
-    def receive_coordinates_loop(self):
-        """Непрерывное получение координат в отдельном потоке."""
-        print("[DEBUG] Начало цикла получения координат")
+        """Запуск получения координат от сервера."""
+        print("[DEBUG] Запуск получения координат")
         while self.running:
             try:
                 coordinates = self.receive_coordinates()
-                if coordinates and self.gui:
-                    self.gui.update_plot(coordinates)
-                time.sleep(0.01)  # Небольшая задержка для снижения нагрузки
-            except Exception as e:
-                print(f"[ERROR] Ошибка в цикле получения координат: {e}")
-                if not self.running:
+                if coordinates:
+                    if self.gui:
+                        self.gui.update_plot(coordinates)
+                else:
+                    print("[WARNING] Получены пустые координаты")
                     break
+            except Exception as e:
+                print(f"[ERROR] Ошибка при получении координат: {e}")
+                break
         print("[DEBUG] Завершение цикла получения координат")
 
     def start_simulation(self):
         """Запуск потока получения координат"""
-        self.start_receiving()
+        # Остановим предыдущую симуляцию, если она запущена
+        if self.running or self.receive_thread:
+            self.stop_simulation()
+            time.sleep(0.1)  # Даем время на закрытие соединения
+        
+        # Подключаемся к серверу
+        if not self.connect():
+            print("[ERROR] Не удалось подключиться к серверу")
+            return False
+            
+        # Загружаем последние настройки из файла
+        try:
+            with open('settings.json', 'r') as file:
+                settings = json.load(file)
+                # Отправляем настройки серверу
+                if not self.send_settings(settings):
+                    print("[ERROR] Не удалось отправить настройки")
+                    self.stop_simulation()
+                    return False
+        except Exception as e:
+            print(f"[ERROR] Ошибка при загрузке настроек: {e}")
+            self.stop_simulation()
+            return False
+
+        # Устанавливаем флаг и запускаем поток
+        self.running = True
+        self.receive_thread = threading.Thread(target=self.start_receiving)
+        self.receive_thread.daemon = True
+        self.receive_thread.start()
+        return True
 
     def stop_simulation(self):
         """Остановка потока получения координат."""
         print("[DEBUG] Остановка симуляции")
+        # Сначала сбрасываем флаг
         self.running = False
+        
+        # Закрываем сокет
+        if self.client_socket:
+            try:
+                self.client_socket.close()
+                self.client_socket = None
+                self.connected = False
+            except Exception as e:
+                print(f"[ERROR] Ошибка при закрытии сокета: {e}")
+        
+        # Ждем завершения потока
         if self.receive_thread and self.receive_thread.is_alive():
-            self.receive_thread.join(timeout=1.0)
+            try:
+                self.receive_thread.join(timeout=1.0)
+            except Exception as e:
+                print(f"[ERROR] Ошибка при ожидании завершения потока: {e}")
+            self.receive_thread = None
+            
         print("[DEBUG] Симуляция остановлена")
 
     def update_plot(self, coordinates):

@@ -35,9 +35,9 @@ class Server:
 
                 # Безопасное получение параметров
                 temperature = float(settings.get('temperature', 300))
-                viscosity = float(settings.get('viscosity', 50)) / 100.0  # Преобразуем значение слайдера в коэффициент вязкости
-                particle_size = float(settings.get('size', 20)) / 1000.0  # Размер частиц в относительных единицах
-                particle_mass = float(settings.get('mass', 50)) / 50.0  # Масса частиц в относительных единицах
+                viscosity = float(settings.get('viscosity', 50)) / 100.0
+                particle_size = float(settings.get('size', 20)) / 1000.0
+                particle_mass = float(settings.get('mass', 50)) / 50.0
                 particle_count = int(settings.get('frequency', 100))
                 
                 print(f"[DEBUG] Создание частиц с параметрами:")
@@ -47,7 +47,7 @@ class Server:
                 print(f"Mass: {particle_mass}")
                 print(f"Count: {particle_count}")
                 
-                # Создание частиц
+                # Пересоздаем частицы с новыми параметрами
                 self.particles = [
                     Particle(
                         random.uniform(0, 1), 
@@ -62,15 +62,15 @@ class Server:
 
                 # Непрерывная отправка координат
                 while True:
-                    # Обновляем позиции частиц
-                    for particle in self.particles:
-                        particle.update_position(0.05)  # Увеличенный шаг времени для более заметного движения
-
-                    # Отправка координат
-                    coordinates = [(p.x, p.y, p.z) for p in self.particles]
                     try:
+                        # Обновляем позиции частиц
+                        for particle in self.particles:
+                            particle.update_position(0.05)
+
+                        # Отправка координат
+                        coordinates = [(p.x, p.y, p.z) for p in self.particles]
                         client_socket.sendall(json.dumps(coordinates).encode())
-                        time.sleep(0.05)  # Уменьшаем задержку для более плавной анимации
+                        time.sleep(0.05)
                     
                     except Exception as send_error:
                         print(f"Ошибка отправки данных: {send_error}")
