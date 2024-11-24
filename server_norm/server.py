@@ -52,6 +52,7 @@ class Server:
                 # Отправка координат частиц
                 coordinates = [(p.x, p.y, p.z) for p in self.particles]
                 try:
+                    # Преобразуем в формат списка списков
                     client_socket.sendall(json.dumps(coordinates).encode())
                     print(f"Отправлены координаты {len(coordinates)} частиц")
                 except Exception as send_error:

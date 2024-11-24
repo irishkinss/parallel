@@ -143,10 +143,26 @@ class SimulationGUI(tk.Tk):
 
     def update_plot(self, coordinates):
         """Обновление 3D-графика."""
-        if coordinates:
-            self.ax.clear()
-            self.ax.scatter(coordinates[0], coordinates[1], coordinates[2])
-            self.canvas.draw()
+        try:
+            if coordinates:
+                self.ax.clear()
+                xs = [coord[0] for coord in coordinates]
+                ys = [coord[1] for coord in coordinates]
+                zs = [coord[2] for coord in coordinates]
+                
+                self.ax.scatter(xs, ys, zs)
+                self.ax.set_xlabel('X')
+                self.ax.set_ylabel('Y')
+                self.ax.set_zlabel('Z')
+                
+                # Установка пределов осей
+                self.ax.set_xlim(0, 1)
+                self.ax.set_ylim(0, 1)
+                self.ax.set_zlim(0, 1)
+                
+                self.canvas.draw()
+        except Exception as e:
+            print(f"Ошибка при обновлении графика: {e}")
     def on_closing(self):
         """Обработка закрытия окна."""
         self.client.close()

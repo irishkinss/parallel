@@ -66,21 +66,30 @@ class Client:
             
             # Получение данных
             data = self.client_socket.recv(4096).decode('utf-8')
+            print(f"Полученные сырые данные: {data}")  # Debugging
+            
             if data:
                 try:
                     # Попытка распарсить JSON
                     coordinates = json.loads(data)
+                    print(f"Распарсенные координаты: {coordinates}")  # Debugging
                     
-                    # Проверка структуры данных
-                    if isinstance(coordinates, list) and len(coordinates) == 3:
-                        # Транспонируем координаты, если они присланы как [[x1,x2,...], [y1,y2,...], [z1,z2,...]]
-                        coordinates = list(map(list, zip(*coordinates)))
-                        print(f"Получены координаты {len(coordinates)} частиц")
-                        
-                        # Здесь можно добавить логику обработки или визуализации координат
-                        return coordinates
+                    # Проверяем структуру данных
+                    if isinstance(coordinates, list):
+                        # Если координаты уже в нужном формате
+                        if all(isinstance(coord, list) for coord in coordinates):
+                            print(f"Получены координаты {len(coordinates)} частиц")
+                            
+                            # Вызываем метод update_plot в GUI
+                            if self.gui:
+                                self.gui.update_plot(coordinates)
+                            
+                            return coordinates
+                        else:
+                            print("Неверный формат координат")
+                            return None
                     else:
-                        print("Неверный формат координат")
+                        print("Координаты не в виде списка")
                         return None
                 
                 except json.JSONDecodeError as e:
