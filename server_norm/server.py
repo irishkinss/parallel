@@ -35,7 +35,17 @@ class Server:
 
                 # Безопасное получение параметров
                 temperature = float(settings.get('temperature', 300))
+                viscosity = float(settings.get('viscosity', 50)) / 100.0  # Преобразуем значение слайдера в коэффициент вязкости
+                particle_size = float(settings.get('size', 20)) / 1000.0  # Размер частиц в относительных единицах
+                particle_mass = float(settings.get('mass', 50)) / 50.0  # Масса частиц в относительных единицах
                 particle_count = int(settings.get('frequency', 100))
+                
+                print(f"[DEBUG] Создание частиц с параметрами:")
+                print(f"Temperature: {temperature}")
+                print(f"Viscosity: {viscosity}")
+                print(f"Size: {particle_size}")
+                print(f"Mass: {particle_mass}")
+                print(f"Count: {particle_count}")
                 
                 # Создание частиц
                 self.particles = [
@@ -43,24 +53,28 @@ class Server:
                         random.uniform(0, 1), 
                         random.uniform(0, 1), 
                         random.uniform(0, 1), 
-                        0.01, 
-                        1.0, 
-                        temperature
+                        particle_size,  # radius 
+                        particle_mass,  # mass
+                        temperature,    # temperature
+                        viscosity      # viscosity
                     ) for _ in range(particle_count)
                 ]
 
-                # Отправка координат частиц
-                coordinates = [(p.x, p.y, p.z) for p in self.particles]
-                try:
-                    # Преобразуем в формат списка списков
-                    client_socket.sendall(json.dumps(coordinates).encode())
-                    print(f"Отправлены координаты {len(coordinates)} частиц")
-                except Exception as send_error:
-                    print(f"Ошибка отправки данных: {send_error}")
-                    break
+                # Непрерывная отправка координат
+                while True:
+                    # Обновляем позиции частиц
+                    for particle in self.particles:
+                        particle.update_position(0.05)  # Увеличенный шаг времени для более заметного движения
 
-                # Небольшая пауза между итерациями
-                time.sleep(0.5)
+                    # Отправка координат
+                    coordinates = [(p.x, p.y, p.z) for p in self.particles]
+                    try:
+                        client_socket.sendall(json.dumps(coordinates).encode())
+                        time.sleep(0.05)  # Уменьшаем задержку для более плавной анимации
+                    
+                    except Exception as send_error:
+                        print(f"Ошибка отправки данных: {send_error}")
+                        break
 
         except socket.timeout:
             print("Тайм-аут соединения")

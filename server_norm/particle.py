@@ -13,41 +13,60 @@ class Particle:
         self.z = z
         self.radius = radius
         self.mass = mass
-        self.temperature = temperature
+        self.temperature = temperature  # Используем как масштаб скорости
         self.viscosity = viscosity
         self.vx, self.vy, self.vz = self.calculate_velocity()
 
     def calculate_velocity(self):
-        k = 1.380649e-23  # постоянная Больцмана
-        vrms = np.sqrt((3 * k * self.temperature) / self.mass)
+        # Упрощенный расчет скорости для лучшей визуализации
+        base_speed = self.temperature / 1000.0  # Масштабируем температуру в более подходящий диапазон
+        
         theta = np.random.uniform(0, np.pi)
         phi = np.random.uniform(0, 2 * np.pi)
         
-        vx = vrms * np.sin(theta) * np.cos(phi)
-        vy = vrms * np.sin(theta) * np.sin(phi)
-        vz = vrms * np.cos(theta)
+        vx = base_speed * np.sin(theta) * np.cos(phi)
+        vy = base_speed * np.sin(theta) * np.sin(phi)
+        vz = base_speed * np.cos(theta)
         
         return vx, vy, vz
 
     def update_position(self, dt):
-        # Стохастическое обновление с учетом вязкости
-        D = (1.380649e-23 * self.temperature) / (6 * np.pi * self.viscosity * self.radius)
+        # Упрощенное броуновское движение для лучшей визуализации
+        diffusion_coeff = 0.001 * (self.temperature / 300.0) * (1.0 / self.viscosity)
         
-        noise_x = np.random.normal(0, np.sqrt(2 * D * dt))
-        noise_y = np.random.normal(0, np.sqrt(2 * D * dt))
-        noise_z = np.random.normal(0, np.sqrt(2 * D * dt))
+        # Случайное смещение
+        noise_x = np.random.normal(0, np.sqrt(2 * diffusion_coeff * dt))
+        noise_y = np.random.normal(0, np.sqrt(2 * diffusion_coeff * dt))
+        noise_z = np.random.normal(0, np.sqrt(2 * diffusion_coeff * dt))
         
+        # Обновление позиции с учетом скорости и случайного смещения
         self.x += self.vx * dt + noise_x
         self.y += self.vy * dt + noise_y
         self.z += self.vz * dt + noise_z
 
-        # Отскок от границ куба
-        if self.x < 0 or self.x > 1:
-            self.vx *= -1
-        if self.y < 0 or self.y > 1:
-            self.vy *= -1
-        if self.z < 0 or self.z > 1:
-            self.vz *= -1
+        # Отскок от границ куба с небольшим затуханием
+        bounce_damping = 0.8  # Коэффициент затухания при отскоке
+        
+        if self.x < 0:
+            self.x = 0
+            self.vx = abs(self.vx) * bounce_damping
+        elif self.x > 1:
+            self.x = 1
+            self.vx = -abs(self.vx) * bounce_damping
+            
+        if self.y < 0:
+            self.y = 0
+            self.vy = abs(self.vy) * bounce_damping
+        elif self.y > 1:
+            self.y = 1
+            self.vy = -abs(self.vy) * bounce_damping
+            
+        if self.z < 0:
+            self.z = 0
+            self.vz = abs(self.vz) * bounce_damping
+        elif self.z > 1:
+            self.z = 1
+            self.vz = -abs(self.vz) * bounce_damping
 
     def check_collision(self, other):
         distance = np.sqrt(

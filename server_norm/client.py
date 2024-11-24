@@ -6,6 +6,7 @@ import threading
 import ast
 import json
 from gui import SimulationGUI
+import time
 
 class Client:
     def __init__(self, server_host='127.0.0.2', server_port=12345, gui = None):
@@ -14,6 +15,8 @@ class Client:
         self.client_socket = None
         self.connected = False
         self.gui = gui
+        self.running = False
+        self.receive_thread = None
 
     def connect(self):
         """Подключение к серверу."""
@@ -66,47 +69,93 @@ class Client:
             
             # Получение данных
             data = self.client_socket.recv(4096).decode('utf-8')
-            print(f"Полученные сырые данные: {data}")  # Debugging
+            print(f"[DEBUG] Полученные сырые данные (первые 100 символов): {data[:100]}")  # Debugging
             
             if data:
                 try:
                     # Попытка распарсить JSON
                     coordinates = json.loads(data)
-                    print(f"Распарсенные координаты: {coordinates}")  # Debugging
+                    print(f"[DEBUG] Тип данных coordinates: {type(coordinates)}")
+                    print(f"[DEBUG] Количество частиц: {len(coordinates)}")
+                    if len(coordinates) > 0:
+                        print(f"[DEBUG] Пример первой частицы: {coordinates[0]}")
                     
                     # Проверяем структуру данных
                     if isinstance(coordinates, list):
                         # Если координаты уже в нужном формате
-                        if all(isinstance(coord, list) for coord in coordinates):
-                            print(f"Получены координаты {len(coordinates)} частиц")
+                        if all(isinstance(coord, list) or isinstance(coord, tuple) for coord in coordinates):
+                            print(f"[DEBUG] Получены корректные координаты {len(coordinates)} частиц")
+                            
+                            # Преобразуем все кортежи в списки для единообразия
+                            coordinates = [list(coord) if isinstance(coord, tuple) else coord for coord in coordinates]
                             
                             # Вызываем метод update_plot в GUI
                             if self.gui:
+                                print("[DEBUG] Вызов update_plot с координатами")
                                 self.gui.update_plot(coordinates)
+                            else:
+                                print("[ERROR] GUI объект не инициализирован")
                             
                             return coordinates
                         else:
-                            print("Неверный формат координат")
+                            print("[ERROR] Неверный формат координат")
                             return None
                     else:
-                        print("Координаты не в виде списка")
+                        print("[ERROR] Координаты не в виде списка")
                         return None
                 
                 except json.JSONDecodeError as e:
-                    print(f"Ошибка декодирования JSON: {e}")
-                    print(f"Полученные данные: {data}")
+                    print(f"[ERROR] Ошибка декодирования JSON: {e}")
+                    print(f"[ERROR] Полученные данные: {data}")
                     return None
-            
             else:
-                print("Пустые данные от сервера")
+                print("[WARNING] Получены пустые данные")
                 return None
-        
+                
         except socket.timeout:
-            print("Тайм-аут при получении данных")
+            print("[ERROR] Таймаут при получении данных")
             return None
         except Exception as e:
-            print(f"Ошибка при получении координат: {e}")
+            print(f"[ERROR] Неожиданная ошибка: {e}")
             return None
+
+    def start_receiving(self):
+        """Запуск потока получения координат."""
+        if not self.receive_thread or not self.receive_thread.is_alive():
+            print("[DEBUG] Запуск потока получения координат")
+            self.running = True
+            self.receive_thread = threading.Thread(target=self.receive_coordinates_loop)
+            self.receive_thread.daemon = True  # Поток-демон завершится вместе с основным потоком
+            self.receive_thread.start()
+        else:
+            print("[WARNING] Поток получения координат уже запущен")
+
+    def receive_coordinates_loop(self):
+        """Непрерывное получение координат в отдельном потоке."""
+        print("[DEBUG] Начало цикла получения координат")
+        while self.running:
+            try:
+                coordinates = self.receive_coordinates()
+                if coordinates and self.gui:
+                    self.gui.update_plot(coordinates)
+                time.sleep(0.01)  # Небольшая задержка для снижения нагрузки
+            except Exception as e:
+                print(f"[ERROR] Ошибка в цикле получения координат: {e}")
+                if not self.running:
+                    break
+        print("[DEBUG] Завершение цикла получения координат")
+
+    def start_simulation(self):
+        """Запуск потока получения координат"""
+        self.start_receiving()
+
+    def stop_simulation(self):
+        """Остановка потока получения координат."""
+        print("[DEBUG] Остановка симуляции")
+        self.running = False
+        if self.receive_thread and self.receive_thread.is_alive():
+            self.receive_thread.join(timeout=1.0)
+        print("[DEBUG] Симуляция остановлена")
 
     def update_plot(self, coordinates):
         """Обновление графика с новыми координатами."""
@@ -116,7 +165,8 @@ class Client:
         self.canvas.draw()
 
     def close(self):
-        """Закрытие соединения с сервером."""
+        """Закрытие соединения с сервером"""
+        self.stop_simulation()
         if self.client_socket:
             self.client_socket.close()
             print("Connection closed.")
@@ -124,5 +174,7 @@ class Client:
 if __name__ == "__main__":
     client = Client()
     gui = SimulationGUI(client)
+    # Устанавливаем GUI объект в клиенте
+    client.gui = gui
     gui.protocol("WM_DELETE_WINDOW", gui.on_closing)
     gui.mainloop()
