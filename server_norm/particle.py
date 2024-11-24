@@ -7,74 +7,86 @@ import json
 import threading
 
 class Particle:
-    def __init__(self, x, y, z, radius=0.01, mass=1.0, temperature=300, viscosity=0.001):
+    def __init__(self, x, y, z, radius, mass, temperature, viscosity):
+        # Позиция
         self.x = x
-        self.y = y 
+        self.y = y
         self.z = z
-        self.radius = radius
-        self.mass = mass
-        self.temperature = temperature  # Используем как масштаб скорости
-        self.viscosity = viscosity
-        self.vx, self.vy, self.vz = self.calculate_velocity()
-
-    def calculate_velocity(self):
-        # Упрощенный расчет скорости для лучшей визуализации
-        base_speed = self.temperature / 1000.0  # Масштабируем температуру в более подходящий диапазон
         
-        theta = np.random.uniform(0, np.pi)
-        phi = np.random.uniform(0, 2 * np.pi)
+        # Физические параметры
+        self.radius = radius  # м
+        self.mass = mass      # кг
+        self.temperature = temperature  # K
+        self.viscosity = viscosity      # Па·с
         
-        vx = base_speed * np.sin(theta) * np.cos(phi)
-        vy = base_speed * np.sin(theta) * np.sin(phi)
-        vz = base_speed * np.cos(theta)
+        # Константы
+        self.k_b = 1.380649e-23  # Постоянная Больцмана, Дж/К
         
-        return vx, vy, vz
-
+        # Рассчитываем параметры движения
+        self.calculate_initial_velocities()
+        
+    def calculate_initial_velocities(self):
+        """Рассчитываем начальные скорости на основе распределения Максвелла-Больцмана"""
+        # Среднеквадратичная скорость: v_rms = sqrt(3kT/m)
+        v_rms = np.sqrt(3 * self.k_b * self.temperature / self.mass)
+        
+        # Генерируем случайные компоненты скорости
+        self.vx = np.random.normal(0, v_rms/np.sqrt(3))
+        self.vy = np.random.normal(0, v_rms/np.sqrt(3))
+        self.vz = np.random.normal(0, v_rms/np.sqrt(3))
+        
     def update_position(self, dt):
-        # Упрощенное броуновское движение для лучшей визуализации
-        diffusion_coeff = 0.001 * (self.temperature / 300.0) * (1.0 / self.viscosity)
+        """Обновляем позицию частицы"""
+        # Обновляем позиции с учетом скорости
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.z += self.vz * dt
         
-        # Случайное смещение
-        noise_x = np.random.normal(0, np.sqrt(2 * diffusion_coeff * dt))
-        noise_y = np.random.normal(0, np.sqrt(2 * diffusion_coeff * dt))
-        noise_z = np.random.normal(0, np.sqrt(2 * diffusion_coeff * dt))
+        # Добавляем случайное смещение (броуновское движение)
+        D = self.k_b * self.temperature / (6 * np.pi * self.viscosity * self.radius)
+        displacement = np.sqrt(2 * D * dt)
         
-        # Обновление позиции с учетом скорости и случайного смещения
-        self.x += self.vx * dt + noise_x
-        self.y += self.vy * dt + noise_y
-        self.z += self.vz * dt + noise_z
-
-        # Отскок от границ куба с небольшим затуханием
-        bounce_damping = 0.8  # Коэффициент затухания при отскоке
+        self.x += np.random.normal(0, displacement)
+        self.y += np.random.normal(0, displacement)
+        self.z += np.random.normal(0, displacement)
         
+        # Проверяем столкновения со стенками (упругие отражения)
         if self.x < 0:
-            self.x = 0
-            self.vx = abs(self.vx) * bounce_damping
+            self.x = -self.x
+            self.vx = -self.vx
         elif self.x > 1:
-            self.x = 1
-            self.vx = -abs(self.vx) * bounce_damping
+            self.x = 2 - self.x
+            self.vx = -self.vx
             
         if self.y < 0:
-            self.y = 0
-            self.vy = abs(self.vy) * bounce_damping
+            self.y = -self.y
+            self.vy = -self.vy
         elif self.y > 1:
-            self.y = 1
-            self.vy = -abs(self.vy) * bounce_damping
+            self.y = 2 - self.y
+            self.vy = -self.vy
             
         if self.z < 0:
-            self.z = 0
-            self.vz = abs(self.vz) * bounce_damping
+            self.z = -self.z
+            self.vz = -self.vz
         elif self.z > 1:
-            self.z = 1
-            self.vz = -abs(self.vz) * bounce_damping
-
+            self.z = 2 - self.z
+            self.vz = -self.vz
+            
+        # Добавляем случайные изменения скорости
+        # Это имитирует столкновения с молекулами среды
+        velocity_perturbation = np.sqrt(self.k_b * self.temperature / self.mass) * 0.1
+        
+        self.vx += np.random.normal(0, velocity_perturbation)
+        self.vy += np.random.normal(0, velocity_perturbation)
+        self.vz += np.random.normal(0, velocity_perturbation)
+    
     def check_collision(self, other):
-        distance = np.sqrt(
-            (self.x - other.x)**2 + 
-            (self.y - other.y)**2 + 
-            (self.z - other.z)**2
-        )
-        return distance <= (self.radius + other.radius)
+        """Проверяем столкновение с другой частицей"""
+        dx = self.x - other.x
+        dy = self.y - other.y
+        dz = self.z - other.z
+        distance = np.sqrt(dx*dx + dy*dy + dz*dz)
+        return distance < (self.radius + other.radius)
 
 class MPIParticleSimulation:
     def __init__(self, settings):
@@ -127,41 +139,45 @@ class MPIParticleSimulation:
         # Создаем частицы
         local_particles = self.create_particles()
         iteration = 0
+        dt = 0.01  # Шаг времени
 
         while iteration < max_iterations:
             # Обновляем позиции частиц
             for particle in local_particles:
-                particle.update_position(0.005)  # dt = 5 мс
+                particle.update_position(dt)
 
-            # Проверяем столкновения внутри локальной группы частиц
-            for i in range(len(local_particles)):
-                for j in range(i+1, len(local_particles)):
-                    if local_particles[i].check_collision(local_particles[j]):
-                        # Корректная модель соударения
-                        local_particles[i].vx, local_particles[j].vx = local_particles[j].vx, local_particles[i].vx
-                        local_particles[i].vy, local_particles[j].vy = local_particles[j].vy, local_particles[i].vy
-                        local_particles[i].vz, local_particles[j].vz = local_particles[j].vz, local_particles[i].vz
-
-            # Синхронизируем состояния частиц
-            all_particles_data = self.comm.allgather([
-                (p.x, p.y, p.z) for p in local_particles
-            ])
-
-            # Отправляем координаты клиенту (только главный процесс)
+            # Собираем данные со всех процессов
             if self.rank == 0 and self.client_connection:
                 try:
-                    coordinates = [
-                        [p[0] for sublist in all_particles_data for p in sublist],
-                        [p[1] for sublist in all_particles_data for p in sublist],
-                        [p[2] for sublist in all_particles_data for p in sublist]
-                    ]
-                    self.client_connection.send(json.dumps(coordinates).encode())
+                    # Собираем позиции частиц
+                    positions = []
+                    for particle in local_particles:
+                        positions.append({
+                            'x': particle.x,
+                            'y': particle.y,
+                            'z': particle.z,
+                            'vx': particle.vx,
+                            'vy': particle.vy,
+                            'vz': particle.vz
+                        })
+                    
+                    # Отправляем данные клиенту
+                    data = json.dumps(positions)
+                    self.client_connection.send(data.encode())
+                    
+                    # Получаем подтверждение от клиента
+                    try:
+                        self.client_connection.recv(1024)
+                    except:
+                        print("Ошибка при получении подтверждения от клиента")
+                        break
+                    
                 except Exception as e:
-                    print(f"Ошибка отправки данных: {e}")
+                    print(f"Ошибка при отправке данных: {e}")
                     break
 
             iteration += 1
-            time.sleep(0.005)
+            time.sleep(0.01)  # Небольшая задержка для визуализации
 
     def close(self):
         """Закрытие соединений"""

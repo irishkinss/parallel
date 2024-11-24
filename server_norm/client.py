@@ -9,14 +9,18 @@ from gui import SimulationGUI
 import time
 
 class Client:
-    def __init__(self, server_host='127.0.0.2', server_port=12345, gui = None):
+    def __init__(self, server_host='127.0.0.2', server_port=12345):
         self.server_host = server_host
         self.server_port = server_port
         self.client_socket = None
         self.connected = False
-        self.gui = gui
         self.running = False
         self.receive_thread = None
+        self.gui = None  # Ссылка на GUI
+
+    def set_gui(self, gui):
+        """Установка ссылки на GUI"""
+        self.gui = gui
 
     def connect(self):
         """Подключение к серверу."""
@@ -32,6 +36,7 @@ class Client:
 
             
     def send_settings(self, settings):
+        """Отправка настроек на сервер"""
         try:
             # Сначала проверяем подключение
             if not self.connected:
@@ -54,135 +59,104 @@ class Client:
         except Exception as e:
             print(f"Ошибка при сохранении настроек: {e}")
             return False
-    def receive_data(self):
-        """Получение данных от сервера."""
+
+    def receive_message(self):
+        """Получение полного сообщения от сервера"""
         try:
-            data = self.socket.recv(1024)
-            return data.decode()
-        except Exception as e:
-            print(f"Error receiving data: {e}")
-            
-    def receive_coordinates(self):
-        """Получение координат от сервера."""
-        try:
-            # Получаем длину сообщения
-            length_bytes = self.client_socket.recv(4)
-            if not length_bytes:
+            # Получаем размер сообщения
+            size_data = self.client_socket.recv(4)
+            if not size_data or len(size_data) != 4:
                 return None
                 
-            # Преобразуем байты в число
-            length = int.from_bytes(length_bytes, byteorder='big')
+            msg_size = int.from_bytes(size_data, byteorder='big')
             
-            # Получаем данные указанной длины
-            data = b''
-            while len(data) < length:
-                chunk = self.client_socket.recv(min(4096, length - len(data)))
+            # Получаем само сообщение
+            chunks = []
+            bytes_received = 0
+            
+            while bytes_received < msg_size:
+                chunk = self.client_socket.recv(min(msg_size - bytes_received, 4096))
                 if not chunk:
                     return None
-                data += chunk
+                chunks.append(chunk)
+                bytes_received += len(chunk)
             
-            # Декодируем и парсим JSON
-            coordinates = json.loads(data.decode())
+            return b''.join(chunks).decode()
             
-            # Проверяем структуру данных
-            if isinstance(coordinates, list):
-                if all(isinstance(coord, list) or isinstance(coord, tuple) for coord in coordinates):
-                    # Преобразуем все кортежи в списки для единообразия
-                    coordinates = [list(coord) if isinstance(coord, tuple) else coord for coord in coordinates]
-                    
-                    # Вызываем метод update_plot в GUI
-                    if self.gui:
-                        self.gui.update_plot(coordinates)
-                    
-                    return coordinates
-                    
-            return None
-                
         except Exception as e:
-            print(f"[ERROR] Ошибка при получении координат: {e}")
+            print(f"Ошибка при получении сообщения: {e}")
             return None
 
     def start_receiving(self):
-        """Запуск получения координат от сервера."""
-        print("[DEBUG] Запуск получения координат")
+        """Получение координат от сервера"""
         while self.running:
             try:
-                coordinates = self.receive_coordinates()
-                if coordinates:
-                    if self.gui:
-                        self.gui.update_plot(coordinates)
-                else:
-                    print("[WARNING] Получены пустые координаты")
+                # Получаем данные
+                data = self.receive_message()
+                if not data:
+                    print("Соединение закрыто сервером")
                     break
+
+                # Парсим JSON
+                coordinates = json.loads(data)
+                
+                # Преобразуем в формат для отображения
+                display_coords = [(p['x'], p['y'], p['z']) for p in coordinates]
+                
+                # Обновляем график через GUI
+                self.update_plot(display_coords)
+                
+                # Отправляем подтверждение
+                try:
+                    self.client_socket.send(b'ACK')
+                except:
+                    print("Ошибка отправки подтверждения")
+                    break
+
+            except json.JSONDecodeError as e:
+                print(f"Ошибка декодирования JSON: {e}")
+                continue
             except Exception as e:
-                print(f"[ERROR] Ошибка при получении координат: {e}")
+                print(f"Ошибка при получении координат: {e}")
                 break
-        print("[DEBUG] Завершение цикла получения координат")
+
+        print("Поток получения координат завершен")
+        self.running = False
+
+    def update_plot(self, coordinates):
+        """Обновление графика через GUI"""
+        if self.gui:
+            self.gui.update_plot(coordinates)
 
     def start_simulation(self):
         """Запуск потока получения координат"""
-        # Остановим предыдущую симуляцию, если она запущена
-        if self.running or self.receive_thread:
-            self.stop_simulation()
-            time.sleep(0.1)  # Даем время на закрытие соединения
-        
-        # Подключаемся к серверу
-        if not self.connect():
-            print("[ERROR] Не удалось подключиться к серверу")
-            return False
-            
-        # Загружаем последние настройки из файла
         try:
-            with open('settings.json', 'r') as file:
-                settings = json.load(file)
-                # Отправляем настройки серверу
-                if not self.send_settings(settings):
-                    print("[ERROR] Не удалось отправить настройки")
-                    self.stop_simulation()
-                    return False
-        except Exception as e:
-            print(f"[ERROR] Ошибка при загрузке настроек: {e}")
-            self.stop_simulation()
-            return False
+            # Останавливаем предыдущую симуляцию, если она запущена
+            if self.running:
+                self.stop_simulation()
+                time.sleep(0.1)  # Даем время на остановку
 
-        # Устанавливаем флаг и запускаем поток
-        self.running = True
-        self.receive_thread = threading.Thread(target=self.start_receiving)
-        self.receive_thread.daemon = True
-        self.receive_thread.start()
-        return True
+            # Запускаем поток получения данных
+            self.running = True
+            self.receive_thread = threading.Thread(target=self.start_receiving)
+            self.receive_thread.daemon = True
+            self.receive_thread.start()
+            print("Симуляция запущена")
+            return True
+
+        except Exception as e:
+            print(f"Ошибка при запуске симуляции: {e}")
+            return False
 
     def stop_simulation(self):
-        """Остановка потока получения координат."""
-        print("[DEBUG] Остановка симуляции")
-        # Сначала сбрасываем флаг
-        self.running = False
-        
-        # Закрываем сокет
-        if self.client_socket:
-            try:
-                self.client_socket.close()
-                self.client_socket = None
-                self.connected = False
-            except Exception as e:
-                print(f"[ERROR] Ошибка при закрытии сокета: {e}")
-        
-        # Ждем завершения потока
-        if self.receive_thread and self.receive_thread.is_alive():
-            try:
+        """Остановка потока получения координат"""
+        try:
+            self.running = False
+            if self.receive_thread and self.receive_thread.is_alive():
                 self.receive_thread.join(timeout=1.0)
-            except Exception as e:
-                print(f"[ERROR] Ошибка при ожидании завершения потока: {e}")
-            self.receive_thread = None
-            
-        print("[DEBUG] Симуляция остановлена")
-
-    def update_plot(self, coordinates):
-        """Обновление графика с новыми координатами."""
-        self.ax.clear()
-        xs, ys, zs = zip(*coordinates)
-        self.ax.scatter(xs, ys, zs)
-        self.canvas.draw()
+            print("Симуляция остановлена")
+        except Exception as e:
+            print(f"Ошибка при остановке симуляции: {e}")
 
     def close(self):
         """Закрытие соединения с сервером"""
@@ -195,6 +169,6 @@ if __name__ == "__main__":
     client = Client()
     gui = SimulationGUI(client)
     # Устанавливаем GUI объект в клиенте
-    client.gui = gui
-    gui.protocol("WM_DELETE_WINDOW", gui.on_closing)
-    gui.mainloop()
+    client.set_gui(gui)
+    gui.root.protocol("WM_DELETE_WINDOW", gui.on_closing)
+    gui.root.mainloop()
