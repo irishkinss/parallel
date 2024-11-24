@@ -63,60 +63,43 @@ class Client:
             print(f"Error receiving data: {e}")
             
     def receive_coordinates(self):
+        """Получение координат от сервера."""
         try:
-            # Установка тайм-аута для получения
-            self.client_socket.settimeout(10)
-            
-            # Получение данных
-            data = self.client_socket.recv(4096).decode('utf-8')
-            print(f"[DEBUG] Полученные сырые данные (первые 100 символов): {data[:100]}")  # Debugging
-            
-            if data:
-                try:
-                    # Попытка распарсить JSON
-                    coordinates = json.loads(data)
-                    print(f"[DEBUG] Тип данных coordinates: {type(coordinates)}")
-                    print(f"[DEBUG] Количество частиц: {len(coordinates)}")
-                    if len(coordinates) > 0:
-                        print(f"[DEBUG] Пример первой частицы: {coordinates[0]}")
-                    
-                    # Проверяем структуру данных
-                    if isinstance(coordinates, list):
-                        # Если координаты уже в нужном формате
-                        if all(isinstance(coord, list) or isinstance(coord, tuple) for coord in coordinates):
-                            print(f"[DEBUG] Получены корректные координаты {len(coordinates)} частиц")
-                            
-                            # Преобразуем все кортежи в списки для единообразия
-                            coordinates = [list(coord) if isinstance(coord, tuple) else coord for coord in coordinates]
-                            
-                            # Вызываем метод update_plot в GUI
-                            if self.gui:
-                                print("[DEBUG] Вызов update_plot с координатами")
-                                self.gui.update_plot(coordinates)
-                            else:
-                                print("[ERROR] GUI объект не инициализирован")
-                            
-                            return coordinates
-                        else:
-                            print("[ERROR] Неверный формат координат")
-                            return None
-                    else:
-                        print("[ERROR] Координаты не в виде списка")
-                        return None
-                
-                except json.JSONDecodeError as e:
-                    print(f"[ERROR] Ошибка декодирования JSON: {e}")
-                    print(f"[ERROR] Полученные данные: {data}")
-                    return None
-            else:
-                print("[WARNING] Получены пустые данные")
+            # Получаем длину сообщения
+            length_bytes = self.client_socket.recv(4)
+            if not length_bytes:
                 return None
                 
-        except socket.timeout:
-            print("[ERROR] Таймаут при получении данных")
+            # Преобразуем байты в число
+            length = int.from_bytes(length_bytes, byteorder='big')
+            
+            # Получаем данные указанной длины
+            data = b''
+            while len(data) < length:
+                chunk = self.client_socket.recv(min(4096, length - len(data)))
+                if not chunk:
+                    return None
+                data += chunk
+            
+            # Декодируем и парсим JSON
+            coordinates = json.loads(data.decode())
+            
+            # Проверяем структуру данных
+            if isinstance(coordinates, list):
+                if all(isinstance(coord, list) or isinstance(coord, tuple) for coord in coordinates):
+                    # Преобразуем все кортежи в списки для единообразия
+                    coordinates = [list(coord) if isinstance(coord, tuple) else coord for coord in coordinates]
+                    
+                    # Вызываем метод update_plot в GUI
+                    if self.gui:
+                        self.gui.update_plot(coordinates)
+                    
+                    return coordinates
+                    
             return None
+                
         except Exception as e:
-            print(f"[ERROR] Неожиданная ошибка: {e}")
+            print(f"[ERROR] Ошибка при получении координат: {e}")
             return None
 
     def start_receiving(self):

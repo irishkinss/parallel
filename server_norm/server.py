@@ -16,65 +16,87 @@ class Server:
         """Обработчик для клиентов."""
         try:
             # Установка тайм-аута для сокета
-            client_socket.settimeout(10)  # 10 секунд тайм-аута
+            client_socket.settimeout(None)  # Отключаем тайм-аут
 
             while True:
-                # Получаем настройки от клиента
-                settings_data = client_socket.recv(1024).decode()
-                if not settings_data:
-                    break  # Если данные пустые, закрываем соединение
-
-                print(f"Получены настройки: {settings_data}")
-                
-                # Безопасное преобразование настроек
                 try:
-                    settings = json.loads(settings_data)
-                except json.JSONDecodeError:
-                    print("Ошибка декодирования JSON")
-                    break
+                    # Получаем настройки от клиента
+                    settings_data = client_socket.recv(1024).decode()
+                    if not settings_data:
+                        break  # Если данные пустые, закрываем соединение
 
-                # Безопасное получение параметров
-                temperature = float(settings.get('temperature', 300))
-                viscosity = float(settings.get('viscosity', 50)) / 100.0
-                particle_size = float(settings.get('size', 20)) / 1000.0
-                particle_mass = float(settings.get('mass', 50)) / 50.0
-                particle_count = int(settings.get('frequency', 100))
-                
-                print(f"[DEBUG] Создание частиц с параметрами:")
-                print(f"Temperature: {temperature}")
-                print(f"Viscosity: {viscosity}")
-                print(f"Size: {particle_size}")
-                print(f"Mass: {particle_mass}")
-                print(f"Count: {particle_count}")
-                
-                # Пересоздаем частицы с новыми параметрами
-                self.particles = [
-                    Particle(
-                        random.uniform(0, 1), 
-                        random.uniform(0, 1), 
-                        random.uniform(0, 1), 
-                        particle_size,  # radius 
-                        particle_mass,  # mass
-                        temperature,    # temperature
-                        viscosity      # viscosity
-                    ) for _ in range(particle_count)
-                ]
-
-                # Непрерывная отправка координат
-                while True:
-                    try:
-                        # Обновляем позиции частиц
-                        for particle in self.particles:
-                            particle.update_position(0.05)
-
-                        # Отправка координат
-                        coordinates = [(p.x, p.y, p.z) for p in self.particles]
-                        client_socket.sendall(json.dumps(coordinates).encode())
-                        time.sleep(0.05)
+                    print(f"Получены настройки: {settings_data}")
                     
-                    except Exception as send_error:
-                        print(f"Ошибка отправки данных: {send_error}")
+                    # Безопасное преобразование настроек
+                    try:
+                        settings = json.loads(settings_data)
+                    except json.JSONDecodeError:
+                        print("Ошибка декодирования JSON")
                         break
+
+                    # Безопасное получение параметров
+                    temperature = float(settings.get('temperature', 300))
+                    viscosity = float(settings.get('viscosity', 50)) / 100.0
+                    particle_size = float(settings.get('size', 20)) / 1000.0
+                    particle_mass = float(settings.get('mass', 50)) / 50.0
+                    particle_count = int(settings.get('frequency', 100))
+                    
+                    print(f"[DEBUG] Создание частиц с параметрами:")
+                    print(f"Temperature: {temperature}")
+                    print(f"Viscosity: {viscosity}")
+                    print(f"Size: {particle_size}")
+                    print(f"Mass: {particle_mass}")
+                    print(f"Count: {particle_count}")
+                    
+                    # Пересоздаем частицы с новыми параметрами
+                    self.particles = [
+                        Particle(
+                            random.uniform(0, 1), 
+                            random.uniform(0, 1), 
+                            random.uniform(0, 1), 
+                            particle_size,  # radius 
+                            particle_mass,  # mass
+                            temperature,    # temperature
+                            viscosity      # viscosity
+                        ) for _ in range(particle_count)
+                    ]
+
+                    # Непрерывная отправка координат
+                    while True:
+                        try:
+                            # Обновляем позиции частиц
+                            for particle in self.particles:
+                                particle.update_position(0.05)
+
+                            # Проверяем столкновения между частицами
+                            for i in range(len(self.particles)):
+                                for j in range(i + 1, len(self.particles)):
+                                    if self.particles[i].check_collision(self.particles[j]):
+                                        # Обмен скоростями при столкновении
+                                        self.particles[i].vx, self.particles[j].vx = self.particles[j].vx, self.particles[i].vx
+                                        self.particles[i].vy, self.particles[j].vy = self.particles[j].vy, self.particles[i].vy
+                                        self.particles[i].vz, self.particles[j].vz = self.particles[j].vz, self.particles[i].vz
+
+                            # Отправка координат
+                            coordinates = [(p.x, p.y, p.z) for p in self.particles]
+                            try:
+                                # Отправляем длину сообщения первым
+                                data = json.dumps(coordinates).encode()
+                                length = len(data)
+                                client_socket.send(length.to_bytes(4, byteorder='big'))
+                                client_socket.sendall(data)
+                                time.sleep(0.05)  # Задержка для стабильной анимации
+                            except (socket.error, BrokenPipeError) as e:
+                                print(f"Ошибка отправки данных: {e}")
+                                raise  # Пробрасываем ошибку выше для обработки
+                        
+                        except Exception as e:
+                            print(f"Ошибка в цикле симуляции: {e}")
+                            break
+
+                except Exception as e:
+                    print(f"Ошибка обработки настроек: {e}")
+                    break
 
         except socket.timeout:
             print("Тайм-аут соединения")
