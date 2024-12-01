@@ -42,22 +42,6 @@ class Particle:
         self.y += self.vy * dt
         self.z += self.vz * dt
         
-        # Добавляем случайное смещение (броуновское движение)
-        D = self.k_b * self.temperature / (6 * np.pi * self.viscosity * self.radius)
-        displacement = np.sqrt(2 * D * dt) * 0.5
-        
-        # Добавляем случайные изменения скорости (термическое движение)
-        velocity_perturbation = np.sqrt(self.k_b * self.temperature / self.mass) * 0.1
-        
-        self.vx += np.random.normal(0, velocity_perturbation)
-        self.vy += np.random.normal(0, velocity_perturbation)
-        self.vz += np.random.normal(0, velocity_perturbation)
-        
-        # Добавляем броуновское смещение
-        self.x += np.random.normal(0, displacement)
-        self.y += np.random.normal(0, displacement)
-        self.z += np.random.normal(0, displacement)
-        
         # Проверяем границы и отражаем частицы
         if self.x < 0:
             self.x = 0

@@ -237,9 +237,10 @@ class SimulationGUI:
             dx = event.xdata - self.last_x
             dy = event.ydata - self.last_y
             
-            # Плавное вращение
-            self.current_azim += dx * -50
-            self.current_elev += dy * 50
+            # Увеличенная чувствительность вращения (было 50, стало 150)
+            # Инвертируем знак для горизонтального вращения
+            self.current_azim -= dx * 200  
+            self.current_elev -= dy * 200  
             
             # Ограничиваем углы возвышения
             self.current_elev = max(-90, min(90, self.current_elev))
@@ -256,7 +257,7 @@ class SimulationGUI:
     def update_plot(self, coordinates):
         """Обновление графика с новыми координатами"""
         try:
-            if not coordinates or self.rotating:
+            if not coordinates:
                 return
                 
             current_time = time.time()

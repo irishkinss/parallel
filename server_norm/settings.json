@@ -1,7 +1,7 @@
 {
-    "temperature": 55.199543212815705,
-    "viscosity": 0.0006094614443529071,
+    "temperature": 1745.562823533862,
+    "viscosity": 0.001,
     "size": 3.1622776601683797e-07,
-    "mass": 2.626363527653331e-19,
-    "frequency": 8
+    "mass": 1e-18,
+    "frequency": 35
 }
