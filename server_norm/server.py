@@ -89,6 +89,15 @@ class Server:
             settings = json.loads(data)
             print(f"Получены настройки: {data}")
             
+            # Останавливаем текущую симуляцию если она запущена
+            if self.running:
+                self.running = False
+                if self.simulation_thread:
+                    self.simulation_thread.join()
+            
+            # Очищаем список частиц
+            self.particles.clear()
+            
             # Создаем частицы с новыми настройками
             self.create_particles(settings)
             

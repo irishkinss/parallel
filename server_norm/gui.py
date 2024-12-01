@@ -15,8 +15,15 @@ matplotlib.use('TkAgg')  # Установка backend перед импорто�
 
 class SimulationGUI:
     def __init__(self, client):
+        """Инициализация GUI"""
+        self.client = client
         self.root = tk.Tk()
         self.root.title("Симуляция частиц")
+        
+        # Добавляем переменные для управления анимацией
+        self.animation_running = False
+        self.last_frame_time = 0
+        self.frame_interval = 33  # ~30 FPS в миллисекундах
         
         # Сохраняем текущий размер окна для отслеживания изменений
         self.current_width = self.root.winfo_width()
@@ -42,7 +49,6 @@ class SimulationGUI:
         self.plot_frame = ttk.Frame(self.main_frame)
         self.plot_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
         
-        self.client = client
         self.client.gui = self
         
         # Создаем слайдеры и кнопки
@@ -172,6 +178,25 @@ class SimulationGUI:
         self.ax.set_ylabel('Y')
         self.ax.set_zlabel('Z')
         self.ax.set_title('Симуляция частиц')
+        
+        # Создаем начальный scatter plot
+        self.particles_plot = self.ax.scatter([], [], [], c='b', marker='o', alpha=0.6)
+        
+        # Добавляем обработчики событий для вращения
+        self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
+        self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
+        self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+        
+        # Флаги для отслеживания состояния
+        self.rotating = False
+        self.last_x = 0
+        self.last_y = 0
+        self.current_azim = 0
+        self.current_elev = 0
+        
+        # Переменные для контроля частоты обновления
+        self.last_update_time = time.time()
+        self.update_interval = 0.033  # ~30 FPS
 
     def on_window_resize(self, event=None):
         """Обработка изменения размера окна"""
@@ -195,39 +220,63 @@ class SimulationGUI:
         except Exception as e:
             print(f"Ошибка при изменении размера: {e}")
 
+    def on_mouse_press(self, event):
+        if event.button == 1:  # Левая кнопка мыши
+            self.rotating = True
+            self.last_x = event.xdata if event.xdata else 0
+            self.last_y = event.ydata if event.ydata else 0
+            self.current_azim = self.ax.azim
+            self.current_elev = self.ax.elev
+
+    def on_mouse_release(self, event):
+        if event.button == 1:
+            self.rotating = False
+
+    def on_mouse_move(self, event):
+        if self.rotating and event.xdata and event.ydata:
+            dx = event.xdata - self.last_x
+            dy = event.ydata - self.last_y
+            
+            # Плавное вращение
+            self.current_azim += dx * -50
+            self.current_elev += dy * 50
+            
+            # Ограничиваем углы возвышения
+            self.current_elev = max(-90, min(90, self.current_elev))
+            
+            # Применяем вращение
+            self.ax.view_init(elev=self.current_elev, azim=self.current_azim)
+            
+            # Перерисовываем только при вращении
+            self.canvas.draw()
+            
+            self.last_x = event.xdata
+            self.last_y = event.ydata
+
     def update_plot(self, coordinates):
         """Обновление графика с новыми координатами"""
         try:
-            if not coordinates:
+            if not coordinates or self.rotating:
                 return
                 
-            # Очищаем текущий график
-            self.ax.clear()
+            current_time = time.time()
+            if current_time - self.last_update_time < self.update_interval:
+                return
+                
+            self.last_update_time = current_time
             
-            # Распаковываем координаты
-            xs = [coord['x'] for coord in coordinates]
-            ys = [coord['y'] for coord in coordinates]
-            zs = [coord['z'] for coord in coordinates]
+            # Получаем координаты
+            x = [p['x'] for p in coordinates]
+            y = [p['y'] for p in coordinates]
+            z = [p['z'] for p in coordinates]
             
-            # Отрисовываем частицы
-            self.ax.scatter(xs, ys, zs, c='b', marker='o')
+            # Обновляем данные существующего scatter plot
+            self.particles_plot._offsets3d = (x, y, z)
             
-            # Устанавливаем пределы осей
-            self.ax.set_xlim([0, 1])
-            self.ax.set_ylim([0, 1])
-            self.ax.set_zlim([0, 1])
-            
-            # Подписи осей
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Y')
-            self.ax.set_zlabel('Z')
-            
-            # Заголовок
-            self.ax.set_title('Симуляция частиц')
-            
-            # Обновляем канвас
-            self.canvas.draw()
-            
+            # Обновляем только если окно существует
+            if self.root.winfo_exists():
+                self.canvas.draw_idle()
+                
         except Exception as e:
             print(f"Ошибка при обновлении графика: {e}")
 
@@ -287,80 +336,77 @@ class SimulationGUI:
             print(f"Ошибка при обновлении настроек: {e}")
 
     def start_simulation(self):
-        """Обработчик нажатия кнопки старт"""
+        """Запуск симуляции"""
         try:
-            # Получаем текущие настройки
-            settings = {
-                'temperature': self.temperature_slider.get(),
-                'viscosity': self.viscosity_slider.get(),
-                'size': self.size_slider.get(),
-                'mass': self.mass_slider.get(),
-                'frequency': int(self.frequency_slider.get())
-            }
-            
-            # Отправляем настройки и запускаем симуляцию
-            if self.client.send_settings(settings):
-                self.client.start_simulation()
+            self.animation_running = True
+            if self.client.start_simulation():
+                self.start_button.config(state='disabled')
+                self.stop_button.config(state='normal')  # Активируем кнопку стоп
+                self.restart_button.config(state='normal')
+                self.log_text.insert(tk.END, "Симуляция запущена\n")
             else:
-                print("Ошибка при запуске симуляции")
-                
+                self.log_text.insert(tk.END, "Ошибка при запуске симуляции\n")
         except Exception as e:
-            print(f"Ошибка при управлении симуляцией: {e}")
+            print(f"Ошибка при запуске симуляции: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось запустить симуляцию: {e}")
 
     def stop_simulation(self):
-        """Обработчик нажатия кнопки стоп"""
+        """Остановка симуляции"""
         try:
-            self.client.running = False
-            if self.client.receive_thread and self.client.receive_thread.is_alive():
-                self.client.receive_thread.join(timeout=1.0)  # Ждем завершения потока
-            self.stop_button.config(state='disabled')
-            self.start_button.config(state='normal')
-            self.log_text.insert(tk.END, "Симуляция остановлена.\n")
-            
-            # Очищаем график
-            self.ax.clear()
-            self.ax.set_xlim([0, 1])
-            self.ax.set_ylim([0, 1])
-            self.ax.set_zlim([0, 1])
-            self.ax.set_xlabel('X')
-            self.ax.set_ylabel('Y')
-            self.ax.set_zlabel('Z')
-            self.ax.set_title('Симуляция частиц')
-            self.canvas.draw()
-            
+            self.animation_running = False
+            if self.client.stop_simulation():
+                self.start_button.config(state='normal')
+                self.stop_button.config(state='disabled')  # Деактивируем кнопку стоп
+                self.restart_button.config(state='normal')
+                self.log_text.insert(tk.END, "Симуляция остановлена\n")
+            else:
+                self.log_text.insert(tk.END, "Ошибка при остановке симуляции\n")
         except Exception as e:
-            self.log_text.insert(tk.END, f"Ошибка при остановке симуляции: {e}\n")
+            print(f"Ошибка при остановке симуляции: {e}")
+            messagebox.showerror("Ошибка", f"Не удалось остановить симуляцию: {e}")
 
     def restart_simulation(self):
         """Перезапуск симуляции с новыми параметрами"""
         try:
             # Останавливаем текущую симуляцию
             self.stop_simulation()
+            time.sleep(0.5)  # Даем время на полную остановку
             
-            # Ждем полной остановки
-            time.sleep(1.0)
+            # Очищаем график
+            if hasattr(self, 'particles_plot') and self.particles_plot:
+                self.particles_plot.remove()
             
-            # Закрываем старое соединение
-            if self.client.client_socket:
-                try:
-                    self.client.client_socket.close()
-                except:
-                    pass
-                self.client.client_socket = None
-                self.client.connected = False
+            # Создаем новый scatter plot
+            self.particles_plot = self.ax.scatter([], [], [], c='b', marker='o', alpha=0.6)
+            self.canvas.draw()
             
-            # Применяем новые настройки
-            self.apply_settings()
+            # Получаем текущие настройки
+            settings = {
+                'temperature': self.get_slider_value(self.temperature_slider, 1e1, 1e4),
+                'viscosity': self.get_slider_value(self.viscosity_slider, 1e-5, 1e-1),
+                'size': self.get_slider_value(self.size_slider, 1e-9, 1e-4),
+                'mass': self.get_slider_value(self.mass_slider, 1e-21, 1e-15),
+                'frequency': int(self.get_slider_value(self.frequency_slider, 1e0, 1e6))
+            }
             
-            # Ждем применения настроек
-            time.sleep(0.5)
-            
-            # Запускаем новую симуляцию
-            self.start_simulation()
-            
+            # Отправляем новые настройки
+            if self.client.send_settings(settings):
+                # Запускаем симуляцию с новыми параметрами
+                if self.client.start_simulation():
+                    self.animation_running = True
+                    self.start_button.config(state='disabled')
+                    self.stop_button.config(state='normal')
+                    self.restart_button.config(state='normal')
+                    self.log_text.insert(tk.END, "Симуляция успешно перезапущена\n")
+                else:
+                    self.log_text.insert(tk.END, "Ошибка при запуске симуляции\n")
+            else:
+                self.log_text.insert(tk.END, "Ошибка при отправке настроек\n")
+                
         except Exception as e:
+            print(f"Ошибка при перезапуске симуляции: {e}")
             self.log_text.insert(tk.END, f"Ошибка при перезапуске симуляции: {e}\n")
-        
+
     def on_closing(self):
         """Обработчик закрытия окна."""
         # Закрываем соединение с клиентом

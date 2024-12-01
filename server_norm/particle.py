@@ -44,42 +44,42 @@ class Particle:
         
         # Добавляем случайное смещение (броуновское движение)
         D = self.k_b * self.temperature / (6 * np.pi * self.viscosity * self.radius)
-        displacement = np.sqrt(2 * D * dt)
+        displacement = np.sqrt(2 * D * dt) * 0.5
         
-        self.x += np.random.normal(0, displacement)
-        self.y += np.random.normal(0, displacement)
-        self.z += np.random.normal(0, displacement)
-        
-        # Проверяем столкновения со стенками (упругие отражения)
-        if self.x < 0:
-            self.x = -self.x
-            self.vx = -self.vx
-        elif self.x > 1:
-            self.x = 2 - self.x
-            self.vx = -self.vx
-            
-        if self.y < 0:
-            self.y = -self.y
-            self.vy = -self.vy
-        elif self.y > 1:
-            self.y = 2 - self.y
-            self.vy = -self.vy
-            
-        if self.z < 0:
-            self.z = -self.z
-            self.vz = -self.vz
-        elif self.z > 1:
-            self.z = 2 - self.z
-            self.vz = -self.vz
-            
-        # Добавляем случайные изменения скорости
-        # Это имитирует столкновения с молекулами среды
+        # Добавляем случайные изменения скорости (термическое движение)
         velocity_perturbation = np.sqrt(self.k_b * self.temperature / self.mass) * 0.1
         
         self.vx += np.random.normal(0, velocity_perturbation)
         self.vy += np.random.normal(0, velocity_perturbation)
         self.vz += np.random.normal(0, velocity_perturbation)
-    
+        
+        # Добавляем броуновское смещение
+        self.x += np.random.normal(0, displacement)
+        self.y += np.random.normal(0, displacement)
+        self.z += np.random.normal(0, displacement)
+        
+        # Проверяем границы и отражаем частицы
+        if self.x < 0:
+            self.x = 0
+            self.vx = abs(self.vx)
+        elif self.x > 1:
+            self.x = 1
+            self.vx = -abs(self.vx)
+            
+        if self.y < 0:
+            self.y = 0
+            self.vy = abs(self.vy)
+        elif self.y > 1:
+            self.y = 1
+            self.vy = -abs(self.vy)
+            
+        if self.z < 0:
+            self.z = 0
+            self.vz = abs(self.vz)
+        elif self.z > 1:
+            self.z = 1
+            self.vz = -abs(self.vz)
+            
     def check_collision(self, other):
         """Проверяем столкновение с другой частицей"""
         dx = self.x - other.x

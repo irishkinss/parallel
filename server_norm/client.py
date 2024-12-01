@@ -100,23 +100,31 @@ class Client:
                 # Парсим JSON
                 coordinates = json.loads(data)
                 
-                # Обновляем график
-                if self.gui:
-                    self.gui.update_plot(coordinates)
-                
-                # Отправляем подтверждение серверу
-                try:
-                    self.client_socket.sendall(b'OK')
-                except:
-                    print("Ошибка при отправке подтверждения")
-                    break
+                # Проверяем валидность данных
+                if not coordinates or not isinstance(coordinates, list):
+                    continue
                     
-            except json.JSONDecodeError as e:
-                print(f"Ошибка при разборе JSON: {e}")
-                continue
+                # Проверяем наличие всех необходимых координат
+                valid_coordinates = []
+                for coord in coordinates:
+                    if all(key in coord for key in ['x', 'y', 'z']):
+                        valid_coordinates.append(coord)
+                
+                # Обновляем график только если есть валидные координаты
+                if valid_coordinates and self.gui:
+                    self.gui.update_plot(valid_coordinates)
+                    
+                # Подтверждаем получение данных
+                try:
+                    self.client_socket.sendall(b'ACK')
+                except:
+                    pass
+                    
             except Exception as e:
                 print(f"Ошибка при получении данных: {e}")
-                break
+                if not self.running:
+                    break
+                time.sleep(0.1)  # Небольшая задержка перед следующей попыткой
         
         # Если вышли из цикла, закрываем соединение
         self.connected = False
@@ -132,37 +140,48 @@ class Client:
             self.gui.update_plot(coordinates)
 
     def start_simulation(self):
-        """Запуск потока получения координат"""
+        """Запуск симуляции"""
         try:
-            # Останавливаем предыдущую симуляцию, если она запущена
-            if self.running:
-                self.stop_simulation()
-                time.sleep(0.1)  # Даем время на остановку
+            if not self.connected:
+                if not self.connect():
+                    print("Не удалось подключиться к серверу")
+                    return False
 
-            # Запускаем поток получения данных
             self.running = True
+            # Запускаем поток для получения данных
             self.receive_thread = threading.Thread(target=self.start_receiving)
             self.receive_thread.daemon = True
             self.receive_thread.start()
             print("Симуляция запущена")
             return True
-
+            
         except Exception as e:
             print(f"Ошибка при запуске симуляции: {e}")
+            self.running = False
             return False
 
     def stop_simulation(self):
         """Остановка симуляции"""
-        self.running = False
-        if self.receive_thread and self.receive_thread.is_alive():
-            self.receive_thread.join(timeout=1.0)
-        if self.client_socket:
-            try:
-                self.client_socket.close()
-            except:
-                pass
-            self.client_socket = None
-            self.connected = False
+        try:
+            self.running = False
+            if self.receive_thread:
+                self.receive_thread.join(timeout=1.0)
+                self.receive_thread = None
+                
+            if self.client_socket:
+                try:
+                    # Отправляем команду остановки
+                    self.client_socket.sendall(b'STOP')
+                    print("Команда остановки отправлена")
+                except:
+                    pass
+                    
+            print("Симуляция остановлена")
+            return True
+            
+        except Exception as e:
+            print(f"Ошибка при остановке симуляции: {e}")
+            return False
 
     def close(self):
         """Закрытие соединения с сервером"""
