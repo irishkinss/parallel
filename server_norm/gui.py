@@ -8,6 +8,7 @@ import threading
 import ast
 import matplotlib
 import math
+import time
 matplotlib.use('TkAgg')  # Установка backend перед импортом pyplot
 #from client import Client
 
@@ -115,17 +116,25 @@ class SimulationGUI:
             self.control_frame, "Количество (N):", "шт", 1e0, 1e6, is_int=True)
         
         # Кнопки управления
-        self.button_frame = ttk.Frame(self.control_frame)
-        self.button_frame.pack(fill='x', pady=10)
+        button_frame = ttk.Frame(self.control_frame)
+        button_frame.pack(fill='x', padx=5, pady=10)
         
-        self.start_button = ttk.Button(self.button_frame, text="Старт", command=self.start_simulation)
+        # Кнопка для запуска симуляции
+        self.start_button = ttk.Button(button_frame, text="Старт", command=self.start_simulation)
         self.start_button.pack(side='left', padx=5)
         
-        self.stop_button = ttk.Button(self.button_frame, text="Стоп", command=self.stop_simulation)
+        # Кнопка для остановки симуляции
+        self.stop_button = ttk.Button(button_frame, text="Стоп", command=self.stop_simulation)
         self.stop_button.pack(side='left', padx=5)
+        self.stop_button.config(state='disabled')
         
-        self.apply_button = ttk.Button(self.button_frame, text="Применить", command=self.apply_settings)
+        # Кнопка для применения параметров
+        self.apply_button = ttk.Button(button_frame, text="Применить", command=self.apply_settings)
         self.apply_button.pack(side='left', padx=5)
+        
+        # Кнопка для перезапуска с новыми параметрами
+        self.restart_button = ttk.Button(button_frame, text="Перезапустить", command=self.restart_simulation)
+        self.restart_button.pack(side='left', padx=5)
         
         # Лог
         self.log_frame = ttk.Frame(self.control_frame)
@@ -189,28 +198,32 @@ class SimulationGUI:
     def update_plot(self, coordinates):
         """Обновление графика с новыми координатами"""
         try:
+            if not coordinates:
+                return
+                
             # Очищаем текущий график
             self.ax.clear()
             
             # Распаковываем координаты
-            if coordinates:
-                xs, ys, zs = zip(*coordinates)
-                
-                # Отрисовываем частицы
-                self.ax.scatter(xs, ys, zs, c='b', marker='o')
-                
-                # Устанавливаем пределы осей
-                self.ax.set_xlim([0, 1])
-                self.ax.set_ylim([0, 1])
-                self.ax.set_zlim([0, 1])
-                
-                # Подписи осей
-                self.ax.set_xlabel('X')
-                self.ax.set_ylabel('Y')
-                self.ax.set_zlabel('Z')
-                
-                # Заголовок
-                self.ax.set_title('Particle Simulation')
+            xs = [coord['x'] for coord in coordinates]
+            ys = [coord['y'] for coord in coordinates]
+            zs = [coord['z'] for coord in coordinates]
+            
+            # Отрисовываем частицы
+            self.ax.scatter(xs, ys, zs, c='b', marker='o')
+            
+            # Устанавливаем пределы осей
+            self.ax.set_xlim([0, 1])
+            self.ax.set_ylim([0, 1])
+            self.ax.set_zlim([0, 1])
+            
+            # Подписи осей
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            self.ax.set_zlabel('Z')
+            
+            # Заголовок
+            self.ax.set_title('Симуляция частиц')
             
             # Обновляем канвас
             self.canvas.draw()
@@ -224,17 +237,19 @@ class SimulationGUI:
         return min_val * (max_val/min_val) ** normalized
 
     def apply_settings(self):
-        # Получение значений ползунков с логарифмическим масштабированием
-        settings = {
-            "temperature": self.get_slider_value(self.temperature_slider, 1e1, 1e4),  # K
-            "viscosity": self.get_slider_value(self.viscosity_slider, 1e-5, 1e-1),   # Па·с
-            "size": self.get_slider_value(self.size_slider, 1e-9, 1e-4),             # м
-            "mass": self.get_slider_value(self.mass_slider, 1e-21, 1e-15),           # кг
-            "frequency": int(self.get_slider_value(self.frequency_slider, 1e0, 1e6))  # шт
-        }
-        # Отправляем настройки на сервер
-        self.client.send_settings(settings)
-        self.log_text.insert(tk.END, "Настройки отправлены на сервер.\n")
+        """Применение новых параметров"""
+        try:
+            settings = {
+                'temperature': self.get_slider_value(self.temperature_slider, 1e1, 1e4),
+                'viscosity': self.get_slider_value(self.viscosity_slider, 1e-5, 1e-1),
+                'size': self.get_slider_value(self.size_slider, 1e-9, 1e-4),
+                'mass': self.get_slider_value(self.mass_slider, 1e-21, 1e-15),
+                'frequency': int(self.get_slider_value(self.frequency_slider, 1e0, 1e6))
+            }
+            self.client.send_settings(settings)
+            self.log_text.insert(tk.END, "Параметры успешно применены.\n")
+        except Exception as e:
+            self.log_text.insert(tk.END, f"Ошибка при применении параметров: {e}\n")
 
     def reset_settings(self):
         # Сброс настроек
@@ -295,12 +310,57 @@ class SimulationGUI:
     def stop_simulation(self):
         """Обработчик нажатия кнопки стоп"""
         try:
-            # Останавливаем симуляцию
-            self.client.stop_simulation()
-                
+            self.client.running = False
+            if self.client.receive_thread and self.client.receive_thread.is_alive():
+                self.client.receive_thread.join(timeout=1.0)  # Ждем завершения потока
+            self.stop_button.config(state='disabled')
+            self.start_button.config(state='normal')
+            self.log_text.insert(tk.END, "Симуляция остановлена.\n")
+            
+            # Очищаем график
+            self.ax.clear()
+            self.ax.set_xlim([0, 1])
+            self.ax.set_ylim([0, 1])
+            self.ax.set_zlim([0, 1])
+            self.ax.set_xlabel('X')
+            self.ax.set_ylabel('Y')
+            self.ax.set_zlabel('Z')
+            self.ax.set_title('Симуляция частиц')
+            self.canvas.draw()
+            
         except Exception as e:
-            print(f"Ошибка при управлении симуляцией: {e}")
+            self.log_text.insert(tk.END, f"Ошибка при остановке симуляции: {e}\n")
 
+    def restart_simulation(self):
+        """Перезапуск симуляции с новыми параметрами"""
+        try:
+            # Останавливаем текущую симуляцию
+            self.stop_simulation()
+            
+            # Ждем полной остановки
+            time.sleep(1.0)
+            
+            # Закрываем старое соединение
+            if self.client.client_socket:
+                try:
+                    self.client.client_socket.close()
+                except:
+                    pass
+                self.client.client_socket = None
+                self.client.connected = False
+            
+            # Применяем новые настройки
+            self.apply_settings()
+            
+            # Ждем применения настроек
+            time.sleep(0.5)
+            
+            # Запускаем новую симуляцию
+            self.start_simulation()
+            
+        except Exception as e:
+            self.log_text.insert(tk.END, f"Ошибка при перезапуске симуляции: {e}\n")
+        
     def on_closing(self):
         """Обработчик закрытия окна."""
         # Закрываем соединение с клиентом

@@ -3,8 +3,8 @@ import threading
 import time
 import random
 from particle import Particle
-import json
 from mpi4py import MPI
+import json  # Добавляем импортирование json модуля
 
 class Server:
     def __init__(self, host='127.0.0.2', port=12345):

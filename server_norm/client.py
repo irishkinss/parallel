@@ -100,28 +100,31 @@ class Client:
                 # Парсим JSON
                 coordinates = json.loads(data)
                 
-                # Преобразуем в формат для отображения
-                display_coords = [(p['x'], p['y'], p['z']) for p in coordinates]
+                # Обновляем график
+                if self.gui:
+                    self.gui.update_plot(coordinates)
                 
-                # Обновляем график через GUI
-                self.update_plot(display_coords)
-                
-                # Отправляем подтверждение
+                # Отправляем подтверждение серверу
                 try:
-                    self.client_socket.send(b'ACK')
+                    self.client_socket.sendall(b'OK')
                 except:
-                    print("Ошибка отправки подтверждения")
+                    print("Ошибка при отправке подтверждения")
                     break
-
+                    
             except json.JSONDecodeError as e:
-                print(f"Ошибка декодирования JSON: {e}")
+                print(f"Ошибка при разборе JSON: {e}")
                 continue
             except Exception as e:
-                print(f"Ошибка при получении координат: {e}")
+                print(f"Ошибка при получении данных: {e}")
                 break
-
-        print("Поток получения координат завершен")
-        self.running = False
+        
+        # Если вышли из цикла, закрываем соединение
+        self.connected = False
+        if self.client_socket:
+            try:
+                self.client_socket.close()
+            except:
+                pass
 
     def update_plot(self, coordinates):
         """Обновление графика через GUI"""
@@ -149,14 +152,17 @@ class Client:
             return False
 
     def stop_simulation(self):
-        """Остановка потока получения координат"""
-        try:
-            self.running = False
-            if self.receive_thread and self.receive_thread.is_alive():
-                self.receive_thread.join(timeout=1.0)
-            print("Симуляция остановлена")
-        except Exception as e:
-            print(f"Ошибка при остановке симуляции: {e}")
+        """Остановка симуляции"""
+        self.running = False
+        if self.receive_thread and self.receive_thread.is_alive():
+            self.receive_thread.join(timeout=1.0)
+        if self.client_socket:
+            try:
+                self.client_socket.close()
+            except:
+                pass
+            self.client_socket = None
+            self.connected = False
 
     def close(self):
         """Закрытие соединения с сервером"""
